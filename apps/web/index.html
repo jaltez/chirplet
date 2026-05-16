@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Chirplet</title>
+    <link rel="stylesheet" href="/static/styles.css">
+  </head>
+  <body data-state="disconnected" data-mood="neutral">
+    <main class="shell">
+      <section class="stage">
+        <div class="ambient ambient-left"></div>
+        <div class="ambient ambient-right"></div>
+
+        <div class="avatar-card">
+          <div class="avatar-frame">
+            <div class="signal-ring"></div>
+            <div class="avatar" role="img" aria-label="Chirplet avatar">
+              <div class="face-grid"></div>
+              <div class="eyes">
+                <span class="eye eye-left"></span>
+                <span class="eye eye-right"></span>
+              </div>
+              <div class="mouth-wrap">
+                <span class="mouth"></span>
+              </div>
+            </div>
+          </div>
+
+          <p id="status-line" class="status-line">Preparing Chirplet...</p>
+
+          <button id="talk-button" class="talk-button" type="button">
+            Talk
+          </button>
+        </div>
+      </section>
+
+      <details class="debug-panel">
+        <summary>Debug</summary>
+
+        <div class="debug-grid">
+          <label class="debug-field" for="manual-input">
+            <span>Manual text</span>
+            <input id="manual-input" type="text" maxlength="500" placeholder="Type a message if your browser does not support speech">
+          </label>
+
+          <button id="manual-send" class="ghost-button" type="button">Send</button>
+
+          <pre id="debug-log" class="debug-log"></pre>
+        </div>
+      </details>
+    </main>
+
+    <script src="/static/app.js" defer></script>
+  </body>
+</html>

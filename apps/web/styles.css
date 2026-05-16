@@ -1,0 +1,322 @@
+:root {
+  --bg: #f4ead8;
+  --bg-strong: #ead9ba;
+  --panel: rgba(255, 250, 241, 0.78);
+  --ink: #1d2a2a;
+  --soft-ink: #4d5b59;
+  --line: rgba(29, 42, 42, 0.12);
+  --accent-listening: #1d8f82;
+  --accent-thinking: #c47d2c;
+  --accent-speaking: #1d7c54;
+  --accent-error: #bd4b35;
+  --accent-disconnected: #6f7378;
+  --shadow: 0 24px 80px rgba(58, 40, 17, 0.18);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at top left, rgba(29, 143, 130, 0.16), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(196, 125, 44, 0.18), transparent 24%),
+    linear-gradient(160deg, var(--bg), var(--bg-strong));
+  font-family: "IBM Plex Sans", "Avenir Next", "Segoe UI", sans-serif;
+}
+
+.shell {
+  min-height: 100vh;
+  display: grid;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 2rem;
+}
+
+.stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 70vh;
+  overflow: hidden;
+}
+
+.ambient {
+  position: absolute;
+  width: 18rem;
+  aspect-ratio: 1;
+  border-radius: 999px;
+  filter: blur(8px);
+  opacity: 0.75;
+}
+
+.ambient-left {
+  top: 10%;
+  left: 12%;
+  background: rgba(29, 143, 130, 0.18);
+}
+
+.ambient-right {
+  right: 10%;
+  bottom: 16%;
+  background: rgba(196, 125, 44, 0.18);
+}
+
+.avatar-card {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  justify-items: center;
+  gap: 1.5rem;
+  padding: 2rem;
+  width: min(34rem, 100%);
+  border: 1px solid var(--line);
+  border-radius: 2rem;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(18px);
+}
+
+.avatar-frame {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: min(24rem, 78vw);
+  aspect-ratio: 1;
+}
+
+.signal-ring {
+  position: absolute;
+  inset: 0.85rem;
+  border-radius: 2rem;
+  border: 2px dashed rgba(29, 42, 42, 0.16);
+  transition: transform 200ms ease, border-color 200ms ease, opacity 200ms ease;
+}
+
+.avatar {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border: 6px solid var(--ink);
+  border-radius: 2rem;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(246, 232, 205, 0.9)),
+    linear-gradient(90deg, rgba(29, 42, 42, 0.04) 1px, transparent 1px),
+    linear-gradient(rgba(29, 42, 42, 0.04) 1px, transparent 1px);
+  background-size: auto, 1.25rem 1.25rem, 1.25rem 1.25rem;
+  box-shadow: inset 0 -14px 0 rgba(29, 42, 42, 0.06);
+}
+
+.face-grid {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent 49.4%, rgba(29, 42, 42, 0.06) 49.6%, rgba(29, 42, 42, 0.06) 50.4%, transparent 50.6%);
+}
+
+.eyes {
+  position: absolute;
+  top: 30%;
+  left: 18%;
+  right: 18%;
+  display: flex;
+  justify-content: space-between;
+}
+
+.eye {
+  width: 3.9rem;
+  aspect-ratio: 1;
+  border-radius: 999px;
+  background: var(--ink);
+  box-shadow: 0 0 0 0.6rem rgba(29, 42, 42, 0.08);
+  transition: transform 180ms ease, border-radius 180ms ease, opacity 180ms ease;
+}
+
+.mouth-wrap {
+  position: absolute;
+  left: 50%;
+  bottom: 22%;
+  transform: translateX(-50%);
+}
+
+.mouth {
+  display: block;
+  width: 7.5rem;
+  height: 0.95rem;
+  border-radius: 999px;
+  background: var(--ink);
+  transition: width 180ms ease, height 180ms ease, border-radius 180ms ease, transform 180ms ease;
+}
+
+.status-line {
+  margin: 0;
+  min-height: 1.6rem;
+  font-size: 0.98rem;
+  letter-spacing: 0.02em;
+  color: var(--soft-ink);
+  text-align: center;
+}
+
+.talk-button,
+.ghost-button {
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  font: inherit;
+  transition: transform 150ms ease, box-shadow 150ms ease, background 150ms ease;
+}
+
+.talk-button {
+  padding: 0.95rem 1.4rem;
+  min-width: 10rem;
+  color: #fefcf8;
+  background: var(--ink);
+  box-shadow: 0 12px 28px rgba(29, 42, 42, 0.2);
+}
+
+.talk-button:hover,
+.ghost-button:hover {
+  transform: translateY(-1px);
+}
+
+.talk-button:disabled {
+  opacity: 0.56;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.debug-panel {
+  width: min(34rem, 100%);
+  margin: 0 auto;
+  padding: 0.25rem 0;
+  color: var(--soft-ink);
+}
+
+.debug-panel summary {
+  cursor: pointer;
+}
+
+.debug-grid {
+  display: grid;
+  gap: 0.85rem;
+  margin-top: 0.9rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 1.25rem;
+  background: rgba(255, 255, 255, 0.42);
+}
+
+.debug-field {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.debug-field input {
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(29, 42, 42, 0.14);
+  border-radius: 1rem;
+  font: inherit;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.ghost-button {
+  justify-self: start;
+  padding: 0.7rem 1rem;
+  color: var(--ink);
+  background: rgba(29, 42, 42, 0.08);
+}
+
+.debug-log {
+  margin: 0;
+  min-height: 8rem;
+  max-height: 16rem;
+  overflow: auto;
+  padding: 0.85rem;
+  border-radius: 1rem;
+  background: rgba(29, 42, 42, 0.06);
+  font-family: "IBM Plex Mono", "JetBrains Mono", monospace;
+  white-space: pre-wrap;
+}
+
+body[data-state="idle"] .signal-ring {
+  border-color: rgba(29, 42, 42, 0.16);
+}
+
+body[data-state="listening"] .signal-ring {
+  border-color: var(--accent-listening);
+  transform: scale(1.03);
+}
+
+body[data-state="thinking"] .signal-ring {
+  border-color: var(--accent-thinking);
+  transform: scale(1.02) rotate(2deg);
+}
+
+body[data-state="speaking"] .signal-ring {
+  border-color: var(--accent-speaking);
+  transform: scale(1.04);
+}
+
+body[data-state="error"] .signal-ring {
+  border-color: var(--accent-error);
+}
+
+body[data-state="disconnected"] .signal-ring {
+  border-color: var(--accent-disconnected);
+  opacity: 0.7;
+}
+
+body[data-state="thinking"] .eye,
+body[data-state="listening"] .eye {
+  transform: translateY(0.35rem) scaleY(0.82);
+}
+
+body[data-state="speaking"] .mouth {
+  width: 5.75rem;
+  height: 3.2rem;
+  border-radius: 2rem 2rem 2.6rem 2.6rem;
+}
+
+body[data-state="error"] .mouth,
+body[data-mood="concerned"] .mouth {
+  width: 6.25rem;
+  transform: translateY(0.2rem) rotate(180deg);
+}
+
+body[data-mood="cheerful"] .mouth,
+body[data-mood="friendly"] .mouth {
+  width: 7.75rem;
+  height: 1.15rem;
+}
+
+body[data-mood="curious"] .eye {
+  transform: scaleY(0.78);
+}
+
+@media (max-width: 700px) {
+  .shell {
+    padding: 1.2rem;
+  }
+
+  .avatar-card {
+    padding: 1.35rem;
+    border-radius: 1.6rem;
+  }
+
+  .eye {
+    width: 2.8rem;
+  }
+
+  .mouth {
+    width: 6rem;
+  }
+}

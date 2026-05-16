@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chirplet.local/contracts/assistant-turn.schema.json",
+  "title": "AssistantTurnResponse",
+  "type": "object",
+  "required": ["session_id", "assistant", "timing", "meta"],
+  "properties": {
+    "session_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "assistant": {
+      "type": "object",
+      "required": ["text", "expression", "action", "voice_locale"],
+      "properties": {
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expression": {
+          "type": "object",
+          "required": ["state", "mood", "mouth"],
+          "properties": {
+            "state": {
+              "type": "string",
+              "enum": ["idle", "listening", "thinking", "speaking", "error", "disconnected"]
+            },
+            "mood": {
+              "type": "string",
+              "enum": ["neutral", "friendly", "curious", "calm", "cheerful", "concerned"]
+            },
+            "mouth": {
+              "type": "string",
+              "enum": ["closed", "open", "smile", "round"]
+            }
+          },
+          "additionalProperties": false
+        },
+        "action": {
+          "type": "string"
+        },
+        "voice_locale": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "timing": {
+      "type": "object",
+      "required": ["request_started_at", "completed_at", "duration_ms"],
+      "properties": {
+        "request_started_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "completed_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "duration_ms": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "meta": {
+      "type": "object",
+      "required": ["provider", "fallback_used"],
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "fallback_used": {
+          "type": "boolean"
+        },
+        "issue": {
+          "type": ["string", "null"]
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
