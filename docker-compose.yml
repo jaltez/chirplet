@@ -1,0 +1,25 @@
+services:
+  chirplet:
+    build: .
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    volumes:
+      - ./data:/app/data
+      - ./.env:/app/.env:ro
+    environment:
+      - APP_HOST=0.0.0.0
+      - APP_PORT=8000
+      - DATABASE_PATH=data/chirplet.db
+    restart: unless-stopped
+
+  # Optional: run Ollama locally alongside Chirplet
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama_data:/root/.ollama
+  #   restart: unless-stopped
+  #
+  # volumes:
+  #   ollama_data:

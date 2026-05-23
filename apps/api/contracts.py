@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -76,5 +77,12 @@ class ConversationTurnResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str
-    hermes_configured: bool
+    provider: str
+    provider_configured: bool
     session_memory: bool
+
+
+@dataclass(frozen=True)
+class ChatTurn:
+    user: str
+    assistant: str

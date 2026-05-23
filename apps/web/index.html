@@ -27,11 +27,14 @@
             </div>
           </div>
 
-          <p id="status-line" class="status-line">Preparing Chirplet...</p>
+          <p id="spoken-text" class="spoken-text" role="status" aria-live="polite"></p>
+          <p id="status-line" class="status-line" role="status" aria-live="polite">Preparing Chirplet...</p>
 
           <button id="talk-button" class="talk-button" type="button">
-            Talk
+            Hold to Talk
           </button>
+
+          <p class="tts-hint">or press spacebar</p>
         </div>
       </section>
 
