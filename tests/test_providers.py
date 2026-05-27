@@ -32,7 +32,8 @@ def _make_settings(**overrides) -> Settings:
         ollama_timeout_seconds=30,
         enable_session_memory=True, session_turn_limit=8,
         session_ttl_minutes=60, session_cleanup_interval_seconds=300,
-        database_path=Path("db"), system_prompt='Respond with JSON: {"text":"..."}',
+        database_path=Path("db"), cors_origins="*",
+        system_prompt='Respond with JSON: {"text":"..."}',
     )
     defaults.update(overrides)
     return Settings(**defaults)

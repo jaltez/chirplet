@@ -67,6 +67,23 @@ class Database:
         )
         await self.conn.commit()
 
+    async def ensure_session(self, session_id: str) -> None:
+        cursor = await self.conn.execute(
+            "SELECT 1 FROM sessions WHERE session_id = ?", (session_id,)
+        )
+        now = datetime.now(timezone.utc).isoformat()
+        if await cursor.fetchone() is None:
+            await self.conn.execute(
+                "INSERT INTO sessions (session_id, created_at, last_active_at) VALUES (?, ?, ?)",
+                (session_id, now, now),
+            )
+        else:
+            await self.conn.execute(
+                "UPDATE sessions SET last_active_at = ? WHERE session_id = ?",
+                (now, session_id),
+            )
+        await self.conn.commit()
+
     async def touch_session(self, session_id: str) -> None:
         now = datetime.now(timezone.utc).isoformat()
         await self.conn.execute(

@@ -62,7 +62,7 @@ class TestSettings:
             ollama_base_url="", ollama_model="", ollama_timeout_seconds=30,
             enable_session_memory=True, session_turn_limit=8,
             session_ttl_minutes=60, session_cleanup_interval_seconds=300,
-            database_path=Path("db"), system_prompt="you are helpful",
+            database_path=Path("db"), cors_origins="*", system_prompt="you are helpful",
         )
         assert s.hermes_configured is True
         assert s.hermes_chat_url == "http://x/v1/chat/completions"
@@ -76,7 +76,7 @@ class TestSettings:
             ollama_base_url="", ollama_model="", ollama_timeout_seconds=30,
             enable_session_memory=True, session_turn_limit=8,
             session_ttl_minutes=60, session_cleanup_interval_seconds=300,
-            database_path=Path("db"), system_prompt="you are helpful",
+            database_path=Path("db"), cors_origins="*", system_prompt="you are helpful",
         )
         assert s.hermes_configured is False
 
@@ -90,7 +90,7 @@ class TestSettings:
             ollama_timeout_seconds=30,
             enable_session_memory=True, session_turn_limit=8,
             session_ttl_minutes=60, session_cleanup_interval_seconds=300,
-            database_path=Path("db"), system_prompt="you are helpful",
+            database_path=Path("db"), cors_origins="*", system_prompt="you are helpful",
         )
         assert s.provider_configured is True
 
@@ -104,6 +104,6 @@ class TestSettings:
             ollama_timeout_seconds=30,
             enable_session_memory=True, session_turn_limit=8,
             session_ttl_minutes=60, session_cleanup_interval_seconds=300,
-            database_path=Path("db"), system_prompt="you are helpful",
+            database_path=Path("db"), cors_origins="*", system_prompt="you are helpful",
         )
         assert s.provider_configured is False

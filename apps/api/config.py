@@ -57,6 +57,7 @@ class Settings:
     session_ttl_minutes: int
     session_cleanup_interval_seconds: int
     database_path: Path
+    cors_origins: str
     system_prompt: str
 
     @property
@@ -71,6 +72,8 @@ class Settings:
 
     @property
     def hermes_chat_url(self) -> str:
+        if not self.hermes_base_url:
+            raise RuntimeError("Hermes endpoint is not configured")
         return f"{self.hermes_base_url}/chat/completions"
 
 
@@ -97,5 +100,6 @@ def get_settings() -> Settings:
         session_ttl_minutes=max(1, int(os.getenv("SESSION_TTL_MINUTES", "60"))),
         session_cleanup_interval_seconds=max(30, int(os.getenv("SESSION_CLEANUP_INTERVAL_SECONDS", "300"))),
         database_path=_resolve_db_path(os.getenv("DATABASE_PATH", "data/chirplet.db")),
+        cors_origins=os.getenv("CORS_ORIGINS", "*"),
         system_prompt=os.getenv("HERMES_SYSTEM_PROMPT", DEFAULT_SYSTEM_PROMPT).strip(),
     )

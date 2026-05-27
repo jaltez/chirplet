@@ -1,10 +1,11 @@
-import asyncio
+import json
 import logging
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+
+from apps.api.contracts import AssistantPayload
 
 
 @pytest.fixture(autouse=True)
@@ -18,10 +19,24 @@ def mock_provider():
     mock = MagicMock()
     mock.provider_name = "mock"
     mock.configured = True
+
     async def complete_turn(transcript, locale, history):
-        from apps.api.contracts import AssistantPayload
         return AssistantPayload(text=f"Echo: {transcript}", voice_locale=locale)
+
     mock.complete_turn = complete_turn
+
+    async def stream_turn(transcript, locale, history):
+        payload = AssistantPayload(text=f"Echo: {transcript}", voice_locale=locale)
+        yield {"type": "token", "text": payload.text}
+        yield {
+            "type": "done",
+            "expression": payload.expression.model_dump(),
+            "voice_locale": payload.voice_locale,
+            "action": payload.action,
+            "full_text": payload.text,
+        }
+
+    mock.stream_turn = stream_turn
     return mock
 
 
@@ -31,6 +46,7 @@ def mock_db():
     db.path = MagicMock()
     db.path.parent = MagicMock()
     db.create_session = AsyncMock()
+    db.ensure_session = AsyncMock()
     db.touch_session = AsyncMock()
     db.save_turn = AsyncMock()
     db.get_history = AsyncMock(return_value=[])
@@ -127,8 +143,10 @@ class TestTurnEndpoint:
     async def test_turn_provider_not_configured(self, client, mock_provider):
         from apps.api.providers import ProviderConfigurationError
         mock_provider.configured = False
+
         async def raise_error(*args, **kwargs):
             raise ProviderConfigurationError("mock not configured")
+
         mock_provider.complete_turn = raise_error
 
         res = await client.post("/api/turn", json={"transcript": "hello"})
@@ -138,14 +156,113 @@ class TestTurnEndpoint:
     @pytest.mark.asyncio
     async def test_turn_provider_error(self, client, mock_provider):
         from apps.api.providers import ProviderProtocolError
+
         async def raise_error(*args, **kwargs):
             raise ProviderProtocolError("mock protocol error")
+
         mock_provider.complete_turn = raise_error
 
         res = await client.post("/api/turn", json={"transcript": "hello"})
         data = res.json()
         assert data["meta"]["fallback_used"] is True
         assert data["assistant"]["text"] == "I cannot respond right now."
+
+
+class TestStreamEndpoint:
+    @pytest.mark.asyncio
+    async def test_stream_success(self, client):
+        res = await client.post("/api/turn/stream", json={
+            "session_id": "stream-1",
+            "transcript": "hello stream",
+            "locale": "en-GB",
+        })
+        assert res.status_code == 200
+        assert res.headers["content-type"] == "text/event-stream; charset=utf-8"
+
+        body = res.text
+        events = []
+        for line in body.split("\n"):
+            if line.startswith("data: "):
+                events.append(json.loads(line[6:]))
+
+        token_events = [e for e in events if e["type"] == "token"]
+        done_events = [e for e in events if e["type"] == "done"]
+
+        assert len(token_events) == 1
+        assert "Echo: hello stream" in token_events[0]["text"]
+        assert len(done_events) == 1
+        assert done_events[0]["session_id"] == "stream-1"
+        assert done_events[0]["voice_locale"] == "en-GB"
+
+    @pytest.mark.asyncio
+    async def test_stream_creates_session(self, client):
+        res = await client.post("/api/turn/stream", json={
+            "transcript": "hello",
+        })
+        body = res.text
+        done_events = []
+        for line in body.split("\n"):
+            if line.startswith("data: "):
+                data = json.loads(line[6:])
+                if data["type"] == "done":
+                    done_events.append(data)
+        assert len(done_events) == 1
+        assert done_events[0]["session_id"] is not None
+
+    @pytest.mark.asyncio
+    async def test_stream_provider_not_configured(self, client, mock_provider):
+        from apps.api.providers import ProviderConfigurationError
+        mock_provider.configured = False
+
+        async def raise_error(*args, **kwargs):
+            raise ProviderConfigurationError("not configured")
+            yield
+
+        mock_provider.stream_turn = raise_error
+
+        res = await client.post("/api/turn/stream", json={"transcript": "hello"})
+        body = res.text
+        events = []
+        for line in body.split("\n"):
+            if line.startswith("data: "):
+                events.append(json.loads(line[6:]))
+
+        error_events = [e for e in events if e["type"] == "error"]
+        assert len(error_events) == 1
+        assert "session_id" in error_events[0]
+
+    @pytest.mark.asyncio
+    async def test_stream_provider_protocol_error(self, client, mock_provider):
+        from apps.api.providers import ProviderProtocolError
+
+        async def raise_error(*args, **kwargs):
+            raise ProviderProtocolError("protocol error")
+            yield
+
+        mock_provider.stream_turn = raise_error
+
+        res = await client.post("/api/turn/stream", json={"transcript": "hello"})
+        body = res.text
+        events = []
+        for line in body.split("\n"):
+            if line.startswith("data: "):
+                events.append(json.loads(line[6:]))
+
+        error_events = [e for e in events if e["type"] == "error"]
+        assert len(error_events) == 1
+        assert error_events[0]["text"] == "I cannot respond right now."
+
+    @pytest.mark.asyncio
+    async def test_stream_saves_turn_on_done(self, client, mock_db):
+        await client.post("/api/turn/stream", json={
+            "session_id": "save-test",
+            "transcript": "hello",
+        })
+        mock_db.save_turn.assert_awaited_once()
+        call_args = mock_db.save_turn.call_args
+        assert call_args[0][0] == "save-test"
+        assert call_args[0][1] == "hello"
+        assert "Echo: hello" in call_args[0][2]
 
 
 class TestIndexEndpoint:

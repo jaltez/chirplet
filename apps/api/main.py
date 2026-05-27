@@ -39,8 +39,8 @@ WEB_DIR = ROOT_DIR / "apps" / "web"
 
 settings: Settings = get_settings()
 logger = setup_logging(settings.log_level)
-database = Database(path=str(settings.database_path), logger=logger.getChild("db"))
-provider: BaseProvider = create_provider(settings, logger.getChild("provider"))
+database: Database | None = None
+provider: BaseProvider | None = None
 
 
 async def _cleanup_sessions_periodically() -> None:
@@ -56,6 +56,10 @@ async def _cleanup_sessions_periodically() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global database, provider
+    database = Database(path=str(settings.database_path), logger=logger.getChild("db"))
+    provider = create_provider(settings, logger.getChild("provider"))
+
     database.path.parent.mkdir(parents=True, exist_ok=True)
     await database.connect()
     logger.info("Chirplet starting env=%s provider=%s configured=%s",
@@ -68,14 +72,29 @@ async def lifespan(app: FastAPI):
     except asyncio.CancelledError:
         pass
     await database.close()
+    database = None
+    provider = None
     logger.info("Chirplet stopped")
+
+
+def _get_db() -> Database:
+    if database is None:
+        raise RuntimeError("Application not started")
+    return database
+
+
+def _get_provider() -> BaseProvider:
+    if provider is None:
+        raise RuntimeError("Application not started")
+    return provider
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
+_cors_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -105,50 +124,53 @@ async def serve_index() -> FileResponse:
 
 @app.get("/api/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
+    p = _get_provider()
     return HealthResponse(
         status="ok",
-        provider=provider.provider_name,
-        provider_configured=provider.configured,
+        provider=p.provider_name,
+        provider_configured=p.configured,
         session_memory=settings.enable_session_memory,
     )
 
 
 @app.post("/api/session", response_model=SessionStartResponse)
 async def create_session() -> SessionStartResponse:
+    db = _get_db()
     session_id = str(uuid4())
-    await database.create_session(session_id)
+    await db.create_session(session_id)
     logger.debug("Session created: %s", session_id)
     return SessionStartResponse(session_id=session_id)
 
 
 @app.post("/api/turn", response_model=ConversationTurnResponse)
 async def create_turn(request: ConversationTurnRequest) -> ConversationTurnResponse:
+    db = _get_db()
+    p = _get_provider()
     started_at = _now_iso()
     started_perf = perf_counter()
     session_id = request.session_id or str(uuid4())
-    meta = ResponseMeta(provider=provider.provider_name, fallback_used=False)
+    meta = ResponseMeta(provider=p.provider_name, fallback_used=False)
 
-    await database.create_session(session_id)
-    await database.touch_session(session_id)
-    history = await database.get_history(session_id, settings.session_turn_limit)
+    await db.ensure_session(session_id)
+    history = await db.get_history(session_id, settings.session_turn_limit)
 
     try:
-        assistant = await provider.complete_turn(
+        assistant = await p.complete_turn(
             transcript=request.transcript,
             locale=request.locale,
             history=history,
         )
-        await database.save_turn(session_id, request.transcript, assistant.text)
+        await db.save_turn(session_id, request.transcript, assistant.text)
         logger.info("Turn completed session=%s provider=%s",
-                     session_id[:8], provider.provider_name)
+                     session_id[:8], p.provider_name)
     except ProviderConfigurationError as exc:
         logger.warning("Provider not configured: %s", exc)
         assistant = _fallback_response(
             locale=request.locale,
             state=AvatarState.DISCONNECTED,
-            text=f"LLM provider '{provider.provider_name}' is not configured yet. Set it in .env",
+            text=f"LLM provider '{p.provider_name}' is not configured yet. Set it in .env",
         )
-        meta = ResponseMeta(provider=provider.provider_name, fallback_used=True, issue=str(exc))
+        meta = ResponseMeta(provider=p.provider_name, fallback_used=True, issue=str(exc))
     except ProviderProtocolError as exc:
         logger.error("Provider protocol error: %s", exc)
         assistant = _fallback_response(
@@ -156,12 +178,12 @@ async def create_turn(request: ConversationTurnRequest) -> ConversationTurnRespo
             state=AvatarState.ERROR,
             text="I cannot respond right now.",
         )
-        meta = ResponseMeta(provider=provider.provider_name, fallback_used=True, issue=str(exc))
+        meta = ResponseMeta(provider=p.provider_name, fallback_used=True, issue=str(exc))
 
     completed_at = _now_iso()
     duration_ms = int((perf_counter() - started_perf) * 1000)
     logger.info("Turn finished session=%s provider=%s fallback=%s duration_ms=%d",
-                session_id, provider.provider_name, meta.fallback_used, duration_ms)
+                session_id, p.provider_name, meta.fallback_used, duration_ms)
 
     return ConversationTurnResponse(
         session_id=session_id,
@@ -177,25 +199,24 @@ async def create_turn(request: ConversationTurnRequest) -> ConversationTurnRespo
 
 @app.post("/api/turn/stream")
 async def create_turn_stream(request: ConversationTurnRequest):
+    db = _get_db()
+    p = _get_provider()
     session_id = request.session_id or str(uuid4())
 
-    await database.create_session(session_id)
-    await database.touch_session(session_id)
-    history = await database.get_history(session_id, settings.session_turn_limit)
+    await db.ensure_session(session_id)
+    history = await db.get_history(session_id, settings.session_turn_limit)
 
     async def event_stream():
-        full_text = ""
         try:
-            async for event in provider.stream_turn(
+            async for event in p.stream_turn(
                 transcript=request.transcript,
                 locale=request.locale,
                 history=history,
             ):
                 if event["type"] == "token":
-                    full_text += event["text"]
                     yield f"data: {json.dumps({'type': 'token', 'text': event['text']})}\n\n"
                 elif event["type"] == "done":
-                    await database.save_turn(session_id, request.transcript, event["full_text"])
+                    await db.save_turn(session_id, request.transcript, event["full_text"])
                     done_data = json.dumps({
                         "type": "done",
                         "session_id": session_id,
@@ -205,11 +226,11 @@ async def create_turn_stream(request: ConversationTurnRequest):
                     })
                     yield f"data: {done_data}\n\n"
                     logger.info("Stream turn finished session=%s", session_id[:8])
-        except ProviderConfigurationError as exc:
+        except ProviderConfigurationError:
             fb = _fallback_response(request.locale, AvatarState.DISCONNECTED,
-                f"LLM provider '{provider.provider_name}' is not configured yet.")
+                f"LLM provider '{p.provider_name}' is not configured yet.")
             yield f"data: {json.dumps({'type': 'error', 'text': fb.text, 'session_id': session_id})}\n\n"
-        except ProviderProtocolError as exc:
+        except ProviderProtocolError:
             fb = _fallback_response(request.locale, AvatarState.ERROR, "I cannot respond right now.")
             yield f"data: {json.dumps({'type': 'error', 'text': fb.text, 'session_id': session_id})}\n\n"
 

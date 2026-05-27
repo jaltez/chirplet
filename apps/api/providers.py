@@ -52,10 +52,10 @@ class BaseProvider(ABC):
         buffer = ""
         async for chunk in self._stream_impl(transcript, locale, history):
             buffer += chunk
-            yield {"type": "token", "text": chunk}
         assistant = self._parse_content(buffer)
         if not assistant.voice_locale:
             assistant.voice_locale = locale
+        yield {"type": "token", "text": assistant.text}
         yield {"type": "done", "expression": assistant.expression.model_dump(),
                "voice_locale": assistant.voice_locale,
                "action": assistant.action, "full_text": assistant.text}
