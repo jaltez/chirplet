@@ -281,19 +281,43 @@ body[data-state="speaking"] .mouth {
 body[data-state="thinking"] .mouth {
   width: 6.25rem;
   height: 1.1rem;
-  transform: translateX(-50%) translateY(0.15rem);
+  transform: translateY(0.15rem);
 }
 
 body[data-state="error"] .mouth,
 body[data-mood="concerned"] .mouth {
   width: 6.25rem;
-  transform: translateX(-50%) translateY(0.2rem) rotate(180deg);
+  transform: translateY(0.2rem) rotate(180deg);
 }
 
 body[data-mood="cheerful"] .mouth,
 body[data-mood="friendly"] .mouth {
   width: 7.75rem;
   height: 1.15rem;
+}
+
+body[data-mouth="closed"] .mouth {
+  width: 7.5rem;
+  height: 0.95rem;
+  border-radius: 999px;
+}
+
+body[data-mouth="open"] .mouth {
+  width: 5.75rem;
+  height: 3.2rem;
+  border-radius: 2rem 2rem 2.6rem 2.6rem;
+}
+
+body[data-mouth="smile"] .mouth {
+  width: 7.75rem;
+  height: 1.15rem;
+  border-radius: 999px;
+}
+
+body[data-mouth="round"] .mouth {
+  width: 3.25rem;
+  height: 3rem;
+  border-radius: 999px;
 }
 
 /* ── Spoken text overlay ── */

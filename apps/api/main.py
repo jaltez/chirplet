@@ -33,6 +33,7 @@ from apps.api.providers import (
     ProviderProtocolError,
     create_provider,
 )
+from apps.api.request_context import new_request_id, request_id_var
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 WEB_DIR = ROOT_DIR / "apps" / "web"
@@ -71,6 +72,8 @@ async def lifespan(app: FastAPI):
         await cleanup_task
     except asyncio.CancelledError:
         pass
+    if provider is not None:
+        await provider.aclose()
     await database.close()
     database = None
     provider = None
@@ -91,6 +94,20 @@ def _get_provider() -> BaseProvider:
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
+
+@app.middleware("http")
+async def request_id_middleware(request: Request, call_next):
+    incoming = request.headers.get("x-request-id")
+    rid = incoming.strip()[:64] if incoming else new_request_id()
+    token = request_id_var.set(rid)
+    try:
+        response = await call_next(request)
+    finally:
+        request_id_var.reset(token)
+    response.headers["X-Request-ID"] = rid
+    return response
+
+
 _cors_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
@@ -107,8 +124,26 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _fallback_response(locale: str, state: AvatarState, text: str) -> AssistantPayload:
+_FALLBACK_TEXT = {
+    "en": {
+        AvatarState.DISCONNECTED: "I can't reach the assistant right now. Please check your configuration.",
+        AvatarState.ERROR: "I cannot respond right now.",
+    },
+    "es": {
+        AvatarState.DISCONNECTED: "No puedo conectar con el asistente. Revisa la configuración.",
+        AvatarState.ERROR: "No puedo responder en este momento.",
+    },
+}
+
+
+def _fallback_response(locale: str, state: AvatarState, default_text: str | None = None) -> AssistantPayload:
     mood = AvatarMood.CONCERNED if state != AvatarState.IDLE else AvatarMood.NEUTRAL
+    lang_prefix = (locale or "").split("-", 1)[0].lower()
+    text = (
+        _FALLBACK_TEXT.get(lang_prefix, {}).get(state)
+        or default_text
+        or "I cannot respond right now."
+    )
     return AssistantPayload(
         text=text,
         voice_locale=locale,
@@ -168,7 +203,6 @@ async def create_turn(request: ConversationTurnRequest) -> ConversationTurnRespo
         assistant = _fallback_response(
             locale=request.locale,
             state=AvatarState.DISCONNECTED,
-            text=f"LLM provider '{p.provider_name}' is not configured yet. Set it in .env",
         )
         meta = ResponseMeta(provider=p.provider_name, fallback_used=True, issue=str(exc))
     except ProviderProtocolError as exc:
@@ -176,7 +210,6 @@ async def create_turn(request: ConversationTurnRequest) -> ConversationTurnRespo
         assistant = _fallback_response(
             locale=request.locale,
             state=AvatarState.ERROR,
-            text="I cannot respond right now.",
         )
         meta = ResponseMeta(provider=p.provider_name, fallback_used=True, issue=str(exc))
 
@@ -198,10 +231,10 @@ async def create_turn(request: ConversationTurnRequest) -> ConversationTurnRespo
 
 
 @app.post("/api/turn/stream")
-async def create_turn_stream(request: ConversationTurnRequest):
+async def create_turn_stream(turn_request: ConversationTurnRequest, http_request: Request):
     db = _get_db()
     p = _get_provider()
-    session_id = request.session_id or str(uuid4())
+    session_id = turn_request.session_id or str(uuid4())
 
     await db.ensure_session(session_id)
     history = await db.get_history(session_id, settings.session_turn_limit)
@@ -209,29 +242,30 @@ async def create_turn_stream(request: ConversationTurnRequest):
     async def event_stream():
         try:
             async for event in p.stream_turn(
-                transcript=request.transcript,
-                locale=request.locale,
+                transcript=turn_request.transcript,
+                locale=turn_request.locale,
                 history=history,
+                should_cancel=http_request.is_disconnected,
             ):
                 if event["type"] == "token":
                     yield f"data: {json.dumps({'type': 'token', 'text': event['text']})}\n\n"
                 elif event["type"] == "done":
-                    await db.save_turn(session_id, request.transcript, event["full_text"])
+                    await db.save_turn(session_id, turn_request.transcript, event["full_text"])
                     done_data = json.dumps({
                         "type": "done",
                         "session_id": session_id,
+                        "text": event["full_text"],
                         "expression": event["expression"],
                         "voice_locale": event["voice_locale"],
                         "action": event["action"],
                     })
                     yield f"data: {done_data}\n\n"
                     logger.info("Stream turn finished session=%s", session_id[:8])
-        except ProviderConfigurationError:
-            fb = _fallback_response(request.locale, AvatarState.DISCONNECTED,
-                f"LLM provider '{p.provider_name}' is not configured yet.")
-            yield f"data: {json.dumps({'type': 'error', 'text': fb.text, 'session_id': session_id})}\n\n"
-        except ProviderProtocolError:
-            fb = _fallback_response(request.locale, AvatarState.ERROR, "I cannot respond right now.")
-            yield f"data: {json.dumps({'type': 'error', 'text': fb.text, 'session_id': session_id})}\n\n"
+        except ProviderConfigurationError as exc:
+            fb = _fallback_response(turn_request.locale, AvatarState.DISCONNECTED)
+            yield f"data: {json.dumps({'type': 'error', 'text': fb.text, 'session_id': session_id, 'issue': str(exc)})}\n\n"
+        except ProviderProtocolError as exc:
+            fb = _fallback_response(turn_request.locale, AvatarState.ERROR)
+            yield f"data: {json.dumps({'type': 'error', 'text': fb.text, 'session_id': session_id, 'issue': str(exc)})}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

@@ -25,7 +25,7 @@ def mock_provider():
 
     mock.complete_turn = complete_turn
 
-    async def stream_turn(transcript, locale, history):
+    async def stream_turn(transcript, locale, history, should_cancel=None):
         payload = AssistantPayload(text=f"Echo: {transcript}", voice_locale=locale)
         yield {"type": "token", "text": payload.text}
         yield {
@@ -162,10 +162,11 @@ class TestTurnEndpoint:
 
         mock_provider.complete_turn = raise_error
 
-        res = await client.post("/api/turn", json={"transcript": "hello"})
+        res = await client.post("/api/turn", json={"transcript": "hello", "locale": "en-GB"})
         data = res.json()
         assert data["meta"]["fallback_used"] is True
         assert data["assistant"]["text"] == "I cannot respond right now."
+        assert data["meta"]["issue"] == "mock protocol error"
 
 
 class TestStreamEndpoint:
@@ -193,6 +194,40 @@ class TestStreamEndpoint:
         assert len(done_events) == 1
         assert done_events[0]["session_id"] == "stream-1"
         assert done_events[0]["voice_locale"] == "en-GB"
+
+    @pytest.mark.asyncio
+    async def test_stream_forwards_multiple_token_events(self, client, mock_provider):
+        async def stream_turn(transcript, locale, history, should_cancel=None):
+            yield {"type": "token", "text": "Hel"}
+            yield {"type": "token", "text": "lo"}
+            yield {
+                "type": "done",
+                "expression": AssistantPayload(text="Hello", voice_locale=locale).expression.model_dump(),
+                "voice_locale": locale,
+                "action": "idle",
+                "full_text": "Hello",
+            }
+
+        mock_provider.stream_turn = stream_turn
+
+        res = await client.post("/api/turn/stream", json={
+            "session_id": "stream-2",
+            "transcript": "hello",
+            "locale": "en-GB",
+        })
+        assert res.status_code == 200
+
+        events = []
+        for line in res.text.split("\n"):
+            if line.startswith("data: "):
+                events.append(json.loads(line[6:]))
+
+        token_events = [event["text"] for event in events if event["type"] == "token"]
+        done_events = [event for event in events if event["type"] == "done"]
+
+        assert token_events == ["Hel", "lo"]
+        assert len(done_events) == 1
+        assert done_events[0]["text"] == "Hello"
 
     @pytest.mark.asyncio
     async def test_stream_creates_session(self, client):
@@ -241,7 +276,7 @@ class TestStreamEndpoint:
 
         mock_provider.stream_turn = raise_error
 
-        res = await client.post("/api/turn/stream", json={"transcript": "hello"})
+        res = await client.post("/api/turn/stream", json={"transcript": "hello", "locale": "en-GB"})
         body = res.text
         events = []
         for line in body.split("\n"):
@@ -251,6 +286,7 @@ class TestStreamEndpoint:
         error_events = [e for e in events if e["type"] == "error"]
         assert len(error_events) == 1
         assert error_events[0]["text"] == "I cannot respond right now."
+        assert error_events[0]["issue"] == "protocol error"
 
     @pytest.mark.asyncio
     async def test_stream_saves_turn_on_done(self, client, mock_db):
@@ -281,3 +317,23 @@ class TestCORS:
             "Access-Control-Request-Method": "GET",
         })
         assert res.status_code in (200, 204, 405)
+
+
+class TestRequestId:
+    @pytest.mark.asyncio
+    async def test_response_has_request_id(self, client):
+        res = await client.get("/api/health")
+        rid = res.headers.get("X-Request-ID")
+        assert rid
+        assert len(rid) <= 64
+
+    @pytest.mark.asyncio
+    async def test_client_supplied_request_id_is_echoed(self, client):
+        res = await client.get("/api/health", headers={"X-Request-ID": "client-abc-123"})
+        assert res.headers.get("X-Request-ID") == "client-abc-123"
+
+    @pytest.mark.asyncio
+    async def test_long_request_id_is_truncated(self, client):
+        long_id = "x" * 200
+        res = await client.get("/api/health", headers={"X-Request-ID": long_id})
+        assert len(res.headers["X-Request-ID"]) <= 64

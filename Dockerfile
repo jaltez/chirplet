@@ -8,7 +8,6 @@ COPY requirements.txt .
 RUN uv pip install --system -r requirements.txt
 
 COPY apps/ apps/
-COPY .env .env
 
 VOLUME ["/app/data"]
 ENV APP_HOST=0.0.0.0

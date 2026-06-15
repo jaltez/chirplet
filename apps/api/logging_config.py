@@ -1,13 +1,17 @@
 import logging
 import sys
 
-FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+from apps.api.request_context import RequestIdFilter
+
+FORMAT = "%(asctime)s [%(levelname)s] %(name)s [%(request_id)s]: %(message)s"
 
 
 def setup_logging(level: str) -> logging.Logger:
-    logging.basicConfig(
-        level=getattr(logging, level.upper(), logging.INFO),
-        format=FORMAT,
-        stream=sys.stderr,
-    )
+    root = logging.getLogger()
+    root.handlers.clear()
+    handler = logging.StreamHandler(stream=sys.stderr)
+    handler.setFormatter(logging.Formatter(FORMAT))
+    handler.addFilter(RequestIdFilter())
+    root.addHandler(handler)
+    root.setLevel(getattr(logging, level.upper(), logging.INFO))
     return logging.getLogger("chirplet")

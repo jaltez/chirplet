@@ -1,7 +1,8 @@
 import json
 import logging
+import re
 from abc import ABC, abstractmethod
-from typing import Any, AsyncGenerator
+from typing import Any, AsyncGenerator, Awaitable, Callable
 
 import httpx
 
@@ -21,10 +22,24 @@ class ProviderProtocolError(ProviderError):
     """Provider returned an unusable response."""
 
 
+TEXT_FIELD_PATTERN = re.compile(r'[{,]\s*"text"\s*:\s*"')
+
+
 class BaseProvider(ABC):
     def __init__(self, settings: Settings, logger: logging.Logger) -> None:
         self.settings = settings
         self.logger = logger
+        self._client: httpx.AsyncClient | None = None
+
+    async def get_client(self, timeout: float) -> httpx.AsyncClient:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=timeout)
+        return self._client
+
+    async def aclose(self) -> None:
+        if self._client is not None and not self._client.is_closed:
+            await self._client.aclose()
+        self._client = None
 
     @property
     @abstractmethod
@@ -45,17 +60,37 @@ class BaseProvider(ABC):
         return assistant
 
     async def stream_turn(
-        self, transcript: str, locale: str, history: list[ChatTurn]
+        self,
+        transcript: str,
+        locale: str,
+        history: list[ChatTurn],
+        should_cancel: Callable[[], Awaitable[bool]] | None = None,
     ) -> AsyncGenerator[dict, None]:
         if not self.configured:
             raise ProviderConfigurationError(f"{self.provider_name} is not configured")
         buffer = ""
+        streamed_text = ""
         async for chunk in self._stream_impl(transcript, locale, history):
+            if should_cancel is not None and await should_cancel():
+                self.logger.info("%s stream cancelled by client", self.provider_name)
+                return
             buffer += chunk
+            preview = self._extract_text_preview(buffer)
+            if preview is not None and preview.startswith(streamed_text):
+                delta = preview[len(streamed_text) :]
+                if delta:
+                    streamed_text = preview
+                    yield {"type": "token", "text": delta}
+        if should_cancel is not None and await should_cancel():
+            self.logger.info("%s stream cancelled by client", self.provider_name)
+            return
         assistant = self._parse_content(buffer)
         if not assistant.voice_locale:
             assistant.voice_locale = locale
-        yield {"type": "token", "text": assistant.text}
+        if assistant.text.startswith(streamed_text):
+            delta = assistant.text[len(streamed_text) :]
+            if delta:
+                yield {"type": "token", "text": delta}
         yield {"type": "done", "expression": assistant.expression.model_dump(),
                "voice_locale": assistant.voice_locale,
                "action": assistant.action, "full_text": assistant.text}
@@ -80,18 +115,18 @@ class BaseProvider(ABC):
             for turn in history[-self.settings.session_turn_limit :]:
                 messages.append({"role": "user", "content": turn.user})
                 messages.append({"role": "assistant", "content": turn.assistant})
+        user_payload = json.dumps(
+            {"locale": locale, "transcript": transcript},
+            ensure_ascii=False,
+        )
         messages.append({
             "role": "user",
-            "content": f"Locale: {locale}\nUser message: {transcript}",
+            "content": user_payload,
         })
         return messages
 
     def _parse_content(self, raw_content: str) -> AssistantPayload:
-        cleaned = raw_content.strip()
-        if cleaned.startswith("```"):
-            cleaned = cleaned.strip("`")
-            cleaned = cleaned.removeprefix("json\n").removeprefix("json")
-            cleaned = cleaned.strip()
+        cleaned = self._clean_content(raw_content)
 
         try:
             payload = json.loads(cleaned)
@@ -105,6 +140,82 @@ class BaseProvider(ABC):
             raise ValueError("No JSON object found in response")
         payload = json.loads(cleaned[start : end + 1])
         return AssistantPayload.model_validate(payload)
+
+    def _clean_content(self, raw_content: str) -> str:
+        cleaned = raw_content.strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.strip("`")
+            cleaned = cleaned.removeprefix("json\n").removeprefix("json")
+            cleaned = cleaned.strip()
+        return cleaned
+
+    def _extract_text_preview(self, raw_content: str) -> str | None:
+        cleaned = self._clean_content(raw_content)
+        object_start = cleaned.find("{")
+        if object_start == -1:
+            return None
+
+        text_match = TEXT_FIELD_PATTERN.search(cleaned[object_start:])
+        if text_match is None:
+            return None
+
+        value_start = object_start + text_match.end()
+        value_end = value_start
+        escaped = False
+
+        while value_end < len(cleaned):
+            char = cleaned[value_end]
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                break
+            value_end += 1
+
+        return self._decode_json_string_prefix(cleaned[value_start:value_end])
+
+    def _decode_json_string_prefix(self, raw_value: str) -> str:
+        escape_map = {
+            '"': '"',
+            "\\": "\\",
+            "/": "/",
+            "b": "\b",
+            "f": "\f",
+            "n": "\n",
+            "r": "\r",
+            "t": "\t",
+        }
+
+        decoded: list[str] = []
+        index = 0
+        while index < len(raw_value):
+            char = raw_value[index]
+            if char != "\\":
+                decoded.append(char)
+                index += 1
+                continue
+
+            if index + 1 >= len(raw_value):
+                break
+
+            escape_code = raw_value[index + 1]
+            if escape_code in escape_map:
+                decoded.append(escape_map[escape_code])
+                index += 2
+                continue
+
+            if escape_code == "u":
+                unicode_value = raw_value[index + 2 : index + 6]
+                if len(unicode_value) < 4 or not all(c in "0123456789abcdefABCDEF" for c in unicode_value):
+                    break
+                decoded.append(chr(int(unicode_value, 16)))
+                index += 6
+                continue
+
+            break
+
+        return "".join(decoded)
 
 
 class HermesProvider(BaseProvider):
@@ -255,21 +366,21 @@ class OllamaProvider(BaseProvider):
         self.logger.debug("Ollama stream request model=%s", self.settings.ollama_model)
 
         try:
-            async with httpx.AsyncClient(timeout=self.settings.ollama_timeout_seconds) as client:
-                async with client.stream("POST", f"{self.settings.ollama_base_url}/api/chat", json=payload) as response:
-                    response.raise_for_status()
-                    async for line in response.aiter_lines():
-                        if not line.strip():
-                            continue
-                        try:
-                            chunk = json.loads(line)
-                            content = chunk.get("message", {}).get("content", "")
-                            if content:
-                                yield content
-                            if chunk.get("done", False):
-                                break
-                        except json.JSONDecodeError:
-                            continue
+            client = await self.get_client(self.settings.ollama_timeout_seconds)
+            async with client.stream("POST", f"{self.settings.ollama_base_url}/api/chat", json=payload) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if not line.strip():
+                        continue
+                    try:
+                        chunk = json.loads(line)
+                        content = chunk.get("message", {}).get("content", "")
+                        if content:
+                            yield content
+                        if chunk.get("done", False):
+                            break
+                    except json.JSONDecodeError:
+                        continue
         except httpx.HTTPError as exc:
             self.logger.error("Ollama stream error: %s", exc)
             raise ProviderProtocolError(f"Ollama stream failed: {exc}") from exc

@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -77,6 +78,22 @@ class TestDatabase:
         await db.create_session("s1")
         deleted = await db.delete_expired_sessions(1440)
         assert deleted == 0
+
+    @pytest.mark.asyncio
+    async def test_delete_expired_sessions_with_iso_timestamps(self, db):
+        await db.create_session("s1")
+        await db.save_turn("s1", "hello", "hi")
+        expired_at = (datetime.now(timezone.utc) - timedelta(seconds=5)).isoformat()
+        await db.conn.execute(
+            "UPDATE sessions SET last_active_at = ? WHERE session_id = ?",
+            (expired_at, "s1"),
+        )
+        await db.conn.commit()
+
+        deleted = await db.delete_expired_sessions(0)
+
+        assert deleted == 1
+        assert await db.get_history("s1", 10) == []
 
     def test_constructor_without_logger(self):
         db = Database("/tmp/test.db")

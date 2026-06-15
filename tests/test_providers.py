@@ -1,5 +1,7 @@
+import json
 import logging
 from pathlib import Path
+from typing import AsyncGenerator
 
 import pytest
 
@@ -51,8 +53,10 @@ class TestBaseProvider:
         assert len(messages) == 2
         assert messages[0]["role"] == "system"
         assert messages[1]["role"] == "user"
-        assert "en-GB" in messages[1]["content"]
-        assert "hello" in messages[1]["content"]
+        assert json.loads(messages[1]["content"]) == {
+            "locale": "en-GB",
+            "transcript": "hello",
+        }
 
     def test_messages_with_history(self):
         settings = _make_settings(enable_session_memory=True, session_turn_limit=8)
@@ -75,6 +79,16 @@ class TestBaseProvider:
         messages = p._build_messages("q2", "es-ES", history)
         assert len(messages) == 2
 
+    def test_messages_escape_user_payload_as_json(self):
+        settings = _make_settings(enable_session_memory=False)
+        p = HermesProvider(settings, _logger())
+        messages = p._build_messages('"Locale: hacked"', "es-ES", [])
+
+        assert json.loads(messages[1]["content"]) == {
+            "locale": "es-ES",
+            "transcript": '"Locale: hacked"',
+        }
+
     def test_parse_content_simple_json(self):
         p = HermesProvider(_make_settings(), _logger())
         result = p._parse_content('{"text":"Hello","expression":{"state":"speaking","mood":"friendly","mouth":"smile"}}')
@@ -95,6 +109,70 @@ class TestBaseProvider:
         p = HermesProvider(_make_settings(), _logger())
         with pytest.raises(ValueError, match="No JSON"):
             p._parse_content("no json here at all")
+
+    @pytest.mark.asyncio
+    async def test_stream_turn_stops_when_cancelled(self):
+        class StreamingProbeProvider(BaseProvider):
+            @property
+            def provider_name(self) -> str:
+                return "probe"
+
+            @property
+            def configured(self) -> bool:
+                return True
+
+            async def _complete_impl(self, transcript, locale, history):
+                return AssistantPayload(text="unused")
+
+            async def _stream_impl(self, transcript, locale, history) -> AsyncGenerator[str, None]:
+                yield '{"text":"Hello"'
+                yield ',"expression":{"state":"speaking","mood":"friendly","mouth":"smile"},"action":"idle","voice_locale":"en-GB"}'
+
+        provider = StreamingProbeProvider(_make_settings(), _logger())
+
+        async def should_cancel() -> bool:
+            return True
+
+        events = [
+            event async for event in provider.stream_turn(
+                "hello",
+                "en-GB",
+                [],
+                should_cancel=should_cancel,
+            )
+        ]
+
+        assert events == []
+
+    @pytest.mark.asyncio
+    async def test_stream_turn_emits_text_deltas_before_done(self):
+        class StreamingProbeProvider(BaseProvider):
+            @property
+            def provider_name(self) -> str:
+                return "probe"
+
+            @property
+            def configured(self) -> bool:
+                return True
+
+            async def _complete_impl(self, transcript, locale, history):
+                return AssistantPayload(text="unused")
+
+            async def _stream_impl(self, transcript, locale, history) -> AsyncGenerator[str, None]:
+                yield '{"text":"Hel'
+                yield 'lo'
+                yield ' there","expression":{"state":"speaking","mood":"friendly","mouth":"smile"},"action":"idle","voice_locale":"en-GB"}'
+
+        provider = StreamingProbeProvider(_make_settings(), _logger())
+
+        events = [event async for event in provider.stream_turn("hello", "en-GB", [])]
+
+        token_events = [event["text"] for event in events if event["type"] == "token"]
+        done_events = [event for event in events if event["type"] == "done"]
+
+        assert token_events == ["Hel", "lo", " there"]
+        assert len(done_events) == 1
+        assert done_events[0]["full_text"] == "Hello there"
 
 
 class TestHermesProvider:

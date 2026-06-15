@@ -5,7 +5,14 @@ const state = {
   spaceDown: false,
   providerConfigured: false,
   recognition: null,
+  turnController: null,
   locale: navigator.language && navigator.language.toLowerCase().startsWith("en") ? "en-GB" : "es-ES",
+}
+
+let turnCounter = 0
+function nextRequestId() {
+  turnCounter += 1
+  return `web-${Date.now().toString(36)}-${turnCounter}`
 }
 
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
@@ -22,16 +29,40 @@ function logDebug(label, value) {
   debugLog.textContent = `[${timestamp}] ${label}: ${value}\n${debugLog.textContent}`.trim()
 }
 
-function setAvatarState(nextState, mood, message) {
+function setAvatarState(nextState, mood, message, options = {}) {
+  const { clearText = false, mouth, action } = options
+
   document.body.dataset.state = nextState
   if (mood) {
     document.body.dataset.mood = mood
   }
+  if (mouth) {
+    document.body.dataset.mouth = mouth
+  }
+  if (action) {
+    document.body.dataset.action = action
+  }
   if (message) {
     statusLine.textContent = message
   }
-  spokenText.textContent = ""
+  if (clearText) {
+    spokenText.textContent = ""
+  }
   refreshButton()
+}
+
+function applyExpression(expression, message, options = {}) {
+  const nextExpression = expression || {}
+
+  setAvatarState(
+    nextExpression.state || "idle",
+    nextExpression.mood || "neutral",
+    message,
+    {
+      ...options,
+      mouth: nextExpression.mouth || options.mouth || "closed",
+    },
+  )
 }
 
 function refreshButton() {
@@ -76,6 +107,20 @@ function cancelSpeaking() {
   }
 }
 
+function interruptTurn() {
+  if (state.turnController) {
+    state.turnController.abort()
+    state.turnController = null
+  }
+
+  cancelSpeaking()
+  state.busy = false
+  setAvatarState("idle", "neutral", "Interrupted.", {
+    mouth: "closed",
+    action: "idle",
+  })
+}
+
 async function ensureSession() {
   if (state.sessionId) {
     return state.sessionId
@@ -94,20 +139,27 @@ async function ensureSession() {
 
 async function submitTurn(transcript) {
   if (!transcript) return
+  transcript = transcript.trim().slice(0, 500)
 
   await ensureSession()
   cancelSpeaking()
   state.busy = true
 
   logDebug("User", transcript)
-  setAvatarState("thinking", "curious", "Thinking...")
-  spokenText.textContent = ""
+  setAvatarState("thinking", "curious", "Thinking...", {
+    clearText: true,
+    mouth: "closed",
+    action: "idle",
+  })
   talkButton.textContent = "Interrupt"
+  const turnController = new AbortController()
+  state.turnController = turnController
 
   try {
     const response = await fetch("/api/turn/stream", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      signal: turnController.signal,
       body: JSON.stringify({
         session_id: state.sessionId,
         transcript,
@@ -139,19 +191,30 @@ async function submitTurn(transcript) {
           fullText += data.text
           spokenText.textContent = fullText
           if (document.body.dataset.state !== "speaking") {
-            setAvatarState("speaking", "friendly", "Speaking...")
+            setAvatarState("speaking", "friendly", "Speaking...", {
+              mouth: "open",
+              action: "idle",
+            })
           }
         } else if (data.type === "done") {
           done = true
           state.busy = false
           state.sessionId = data.session_id
+          fullText = data.text || fullText
+          spokenText.textContent = fullText
           logDebug("Chirplet", fullText)
-          speakResponse(fullText, data.voice_locale || state.locale)
+          speakResponse(fullText, data.voice_locale || state.locale, data.expression, data.action)
         } else if (data.type === "error") {
           done = true
           state.busy = false
           spokenText.textContent = data.text
-          setAvatarState("error", "concerned", data.text)
+          if (data.issue) {
+            logDebug("Provider", data.issue)
+          }
+          setAvatarState("error", "concerned", data.text, {
+            mouth: "closed",
+            action: "idle",
+          })
           state.sessionId = data.session_id
         }
       }
@@ -160,13 +223,21 @@ async function submitTurn(transcript) {
     state.busy = false
     if (error.name === "AbortError") return
     logDebug("Error", error.message)
-    setAvatarState("error", "concerned", "I could not reach the LLM provider.")
+    setAvatarState("error", "concerned", "I could not reach the LLM provider.", {
+      mouth: "closed",
+      action: "idle",
+    })
+  } finally {
+    if (state.turnController === turnController) {
+      state.turnController = null
+    }
   }
 }
 
-function speakResponse(text, lang) {
+function speakResponse(text, lang, expression, action) {
   if (!window.speechSynthesis) {
-    setAvatarState("idle", "neutral", text)
+    spokenText.textContent = text
+    applyExpression(expression, text, { action: action || "idle" })
     return
   }
 
@@ -177,15 +248,25 @@ function speakResponse(text, lang) {
   utterance.volume = 1
 
   utterance.onstart = () => {
-    setAvatarState("speaking", "friendly", "Speaking...")
+    applyExpression({
+      state: "speaking",
+      mood: expression?.mood || "friendly",
+      mouth: expression?.mouth || "open",
+    }, "Speaking...", { action: action || "idle" })
   }
 
   utterance.onend = () => {
-    setAvatarState("idle", "neutral", "Ready.")
+    setAvatarState("idle", "neutral", "Ready.", {
+      mouth: "closed",
+      action: "idle",
+    })
   }
 
   utterance.onerror = () => {
-    setAvatarState("idle", "neutral", "Ready.")
+    setAvatarState("idle", "neutral", "Ready.", {
+      mouth: "closed",
+      action: "idle",
+    })
   }
 
   window.speechSynthesis.cancel()
@@ -194,7 +275,10 @@ function speakResponse(text, lang) {
 
 function startListening() {
   if (!SpeechRecognition) {
-    setAvatarState("error", "concerned", "Browser does not support speech recognition. Use the debug panel.")
+    setAvatarState("error", "concerned", "Browser does not support speech recognition. Use the debug panel.", {
+      mouth: "closed",
+      action: "idle",
+    })
     return
   }
 
@@ -208,13 +292,19 @@ function startListening() {
   recognition.onstart = () => {
     state.recognition = recognition
     state.listening = true
-    setAvatarState("listening", "curious", "Listening...")
+    setAvatarState("listening", "curious", "Listening...", {
+      mouth: "closed",
+      action: "idle",
+    })
   }
 
   recognition.onerror = (event) => {
     state.listening = false
     state.recognition = null
-    setAvatarState("error", "concerned", `Microphone error: ${event.error}`)
+    setAvatarState("error", "concerned", `Microphone error: ${event.error}`, {
+      mouth: "closed",
+      action: "idle",
+    })
   }
 
   recognition.onresult = async (event) => {
@@ -222,7 +312,10 @@ function startListening() {
     state.listening = false
     state.recognition = null
     if (!transcript) {
-      setAvatarState("idle", "neutral", "I did not detect speech.")
+      setAvatarState("idle", "neutral", "I did not detect speech.", {
+        mouth: "closed",
+        action: "idle",
+      })
       return
     }
     await submitTurn(transcript)
@@ -243,14 +336,15 @@ function startListening() {
 
 function handleTalkStart() {
   if (!state.providerConfigured) {
-    setAvatarState("disconnected", "neutral", "Configure an LLM provider in .env to begin.")
+    setAvatarState("disconnected", "neutral", "Configure an LLM provider in .env to begin.", {
+      mouth: "closed",
+      action: "idle",
+    })
     return
   }
 
   if (state.busy) {
-    cancelSpeaking()
-    state.busy = false
-    setAvatarState("idle", "neutral", "Ready.")
+    interruptTurn()
     return
   }
 
@@ -324,15 +418,24 @@ async function boot() {
     refreshButton()
 
     if (!state.providerConfigured) {
-      setAvatarState("disconnected", "neutral", "Configure an LLM provider and restart the app.")
+      setAvatarState("disconnected", "neutral", "Configure an LLM provider and restart the app.", {
+        mouth: "closed",
+        action: "idle",
+      })
       return
     }
 
     await ensureSession()
-    setAvatarState("idle", "neutral", "Hold spacebar or press Talk to begin.")
+    setAvatarState("idle", "neutral", "Hold spacebar or press Talk to begin.", {
+      mouth: "closed",
+      action: "idle",
+    })
   } catch (error) {
     logDebug("Boot", error.message)
-    setAvatarState("error", "concerned", "I could not start the app.")
+    setAvatarState("error", "concerned", "I could not start the app.", {
+      mouth: "closed",
+      action: "idle",
+    })
   }
 }
 
