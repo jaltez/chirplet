@@ -1,0 +1,15 @@
+[tool.coverage.run]
+source = ["apps"]
+omit = [
+    "apps/__init__.py",
+    "apps/api/__init__.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
