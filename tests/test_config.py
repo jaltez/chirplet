@@ -80,6 +80,20 @@ class TestSettings:
         )
         assert s.hermes_configured is False
 
+    def test_hermes_chat_url_raises_when_not_configured(self):
+        s = Settings(
+            app_name="test", app_env="test", app_host="0", app_port=0,
+            log_level="INFO", llm_provider="hermes", llm_temperature=0.4,
+            hermes_base_url="", hermes_api_key=None, hermes_model="",
+            hermes_timeout_seconds=30, hermes_response_format="none",
+            ollama_base_url="", ollama_model="", ollama_timeout_seconds=30,
+            enable_session_memory=True, session_turn_limit=8,
+            session_ttl_minutes=60, session_cleanup_interval_seconds=300,
+            database_path=Path("db"), cors_origins="*", system_prompt="you are helpful",
+        )
+        with pytest.raises(RuntimeError, match="Hermes endpoint is not configured"):
+            _ = s.hermes_chat_url
+
     def test_provider_configured_ollama(self):
         s = Settings(
             app_name="test", app_env="test", app_host="0", app_port=0,

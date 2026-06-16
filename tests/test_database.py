@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -98,3 +99,42 @@ class TestDatabase:
     def test_constructor_without_logger(self):
         db = Database("/tmp/test.db")
         assert db.logger is not None
+
+    def test_conn_property_raises_when_not_connected(self):
+        db = Database("/tmp/never-connected.db")
+        with pytest.raises(RuntimeError, match="Database not connected"):
+            _ = db.conn
+
+    @pytest.mark.asyncio
+    async def test_ensure_session_creates_new(self, db):
+        await db.ensure_session("s-new")
+        cursor = await db.conn.execute(
+            "SELECT session_id FROM sessions WHERE session_id = ?", ("s-new",)
+        )
+        row = await cursor.fetchone()
+        assert row is not None
+        assert row["session_id"] == "s-new"
+
+    @pytest.mark.asyncio
+    async def test_ensure_session_updates_existing(self, db):
+        await db.ensure_session("s-existing")
+        original = await db.conn.execute(
+            "SELECT last_active_at FROM sessions WHERE session_id = ?", ("s-existing",)
+        )
+        original_ts = (await original.fetchone())["last_active_at"]
+
+        # Wait a tick so the timestamp can differ; then re-ensure.
+        await asyncio.sleep(0.01)
+        await db.ensure_session("s-existing")
+
+        updated = await db.conn.execute(
+            "SELECT last_active_at FROM sessions WHERE session_id = ?", ("s-existing",)
+        )
+        updated_ts = (await updated.fetchone())["last_active_at"]
+
+        assert updated_ts >= original_ts
+        # Still exactly one row.
+        cursor = await db.conn.execute(
+            "SELECT COUNT(*) AS n FROM sessions WHERE session_id = ?", ("s-existing",)
+        )
+        assert (await cursor.fetchone())["n"] == 1
