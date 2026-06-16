@@ -1,85 +1,162 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://chirplet.local/contracts/assistant-turn.schema.json",
-  "title": "AssistantTurnResponse",
-  "type": "object",
-  "required": ["session_id", "assistant", "timing", "meta"],
-  "properties": {
-    "session_id": {
-      "type": "string",
-      "minLength": 1
-    },
-    "assistant": {
-      "type": "object",
-      "required": ["text", "expression", "action", "voice_locale"],
+  "$defs": {
+    "AssistantPayload": {
       "properties": {
         "text": {
-          "type": "string",
-          "minLength": 1
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
         },
         "expression": {
-          "type": "object",
-          "required": ["state", "mood", "mouth"],
-          "properties": {
-            "state": {
-              "type": "string",
-              "enum": ["idle", "listening", "thinking", "speaking", "error", "disconnected"]
-            },
-            "mood": {
-              "type": "string",
-              "enum": ["neutral", "friendly", "curious", "calm", "cheerful", "concerned"]
-            },
-            "mouth": {
-              "type": "string",
-              "enum": ["closed", "open", "smile", "round"]
-            }
-          },
-          "additionalProperties": false
+          "$ref": "#/$defs/AvatarExpression"
         },
         "action": {
+          "default": "idle",
+          "maxLength": 40,
+          "title": "Action",
           "type": "string"
         },
         "voice_locale": {
+          "default": "es-ES",
+          "maxLength": 16,
+          "title": "Voice Locale",
           "type": "string"
         }
       },
-      "additionalProperties": false
+      "required": [
+        "text"
+      ],
+      "title": "AssistantPayload",
+      "type": "object"
     },
-    "timing": {
-      "type": "object",
-      "required": ["request_started_at", "completed_at", "duration_ms"],
+    "AvatarExpression": {
       "properties": {
-        "request_started_at": {
-          "type": "string",
-          "format": "date-time"
+        "state": {
+          "$ref": "#/$defs/AvatarState",
+          "default": "speaking"
         },
-        "completed_at": {
-          "type": "string",
-          "format": "date-time"
+        "mood": {
+          "$ref": "#/$defs/AvatarMood",
+          "default": "friendly"
         },
-        "duration_ms": {
-          "type": "integer",
-          "minimum": 0
+        "mouth": {
+          "$ref": "#/$defs/MouthCue",
+          "default": "smile"
         }
       },
-      "additionalProperties": false
+      "title": "AvatarExpression",
+      "type": "object"
     },
-    "meta": {
-      "type": "object",
-      "required": ["provider", "fallback_used"],
+    "AvatarMood": {
+      "enum": [
+        "neutral",
+        "friendly",
+        "curious",
+        "calm",
+        "cheerful",
+        "concerned"
+      ],
+      "title": "AvatarMood",
+      "type": "string"
+    },
+    "AvatarState": {
+      "enum": [
+        "idle",
+        "listening",
+        "thinking",
+        "speaking",
+        "error",
+        "disconnected"
+      ],
+      "title": "AvatarState",
+      "type": "string"
+    },
+    "MouthCue": {
+      "enum": [
+        "closed",
+        "open",
+        "smile",
+        "round"
+      ],
+      "title": "MouthCue",
+      "type": "string"
+    },
+    "ResponseMeta": {
       "properties": {
         "provider": {
+          "default": "hermes",
+          "title": "Provider",
           "type": "string"
         },
         "fallback_used": {
+          "default": false,
+          "title": "Fallback Used",
           "type": "boolean"
         },
         "issue": {
-          "type": ["string", "null"]
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Issue"
         }
       },
-      "additionalProperties": false
+      "title": "ResponseMeta",
+      "type": "object"
+    },
+    "TimingMetrics": {
+      "properties": {
+        "request_started_at": {
+          "title": "Request Started At",
+          "type": "string"
+        },
+        "completed_at": {
+          "title": "Completed At",
+          "type": "string"
+        },
+        "duration_ms": {
+          "minimum": 0,
+          "title": "Duration Ms",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "request_started_at",
+        "completed_at",
+        "duration_ms"
+      ],
+      "title": "TimingMetrics",
+      "type": "object"
     }
   },
-  "additionalProperties": false
+  "properties": {
+    "session_id": {
+      "title": "Session Id",
+      "type": "string"
+    },
+    "assistant": {
+      "$ref": "#/$defs/AssistantPayload"
+    },
+    "timing": {
+      "$ref": "#/$defs/TimingMetrics"
+    },
+    "meta": {
+      "$ref": "#/$defs/ResponseMeta"
+    }
+  },
+  "required": [
+    "session_id",
+    "assistant",
+    "timing"
+  ],
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chirplet.local/contracts/assistant-turn.schema.json",
+  "title": "AssistantTurnResponse"
 }
