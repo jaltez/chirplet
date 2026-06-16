@@ -149,3 +149,64 @@ class TestCleanupLoop:
         # After exit, app.state should be cleared.
         assert main_module.app.state.database is None
         assert main_module.app.state.provider is None
+
+
+class TestHistoryRoutesUnderRealLifespan:
+    @pytest.mark.asyncio
+    async def test_create_then_list_then_get_then_delete(self, booted_app):
+        _app, client = booted_app
+
+        # 1. Create a session.
+        res = await client.post("/api/session")
+        assert res.status_code == 200
+        session_id = res.json()["session_id"]
+
+        # 2. List it.
+        res = await client.get("/api/sessions")
+        assert res.status_code == 200
+        ids = [s["session_id"] for s in res.json()["sessions"]]
+        assert session_id in ids
+        # It has zero turns so far.
+        listed = next(s for s in res.json()["sessions"] if s["session_id"] == session_id)
+        assert listed["turn_count"] == 0
+
+        # 3. Get the single session.
+        res = await client.get(f"/api/sessions/{session_id}")
+        assert res.status_code == 200
+        assert res.json()["session_id"] == session_id
+
+        # 4. Get its turns (empty).
+        res = await client.get(f"/api/sessions/{session_id}/turns")
+        assert res.status_code == 200
+        assert res.json() == {"session_id": session_id, "turns": []}
+
+        # 5. Persist a turn directly via the real database, then re-read.
+        from fastapi import Request
+        from apps.api.main import get_db
+
+        request = Request({"type": "http", "app": _app, "headers": []})
+        db = get_db(request)
+        await db.save_turn(session_id, "hi", "hello there")
+
+        res = await client.get(f"/api/sessions/{session_id}/turns")
+        assert res.status_code == 200
+        turns = res.json()["turns"]
+        assert len(turns) == 1
+        assert turns[0]["user"] == "hi"
+        assert turns[0]["assistant"] == "hello there"
+        assert turns[0]["id"] >= 1
+
+        # 6. Delete it.
+        res = await client.delete(f"/api/sessions/{session_id}")
+        assert res.status_code == 204
+
+        # 7. 404 afterwards.
+        res = await client.get(f"/api/sessions/{session_id}")
+        assert res.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_missing_session_routes_return_404(self, booted_app):
+        _app, client = booted_app
+        assert (await client.get("/api/sessions/nope")).status_code == 404
+        assert (await client.get("/api/sessions/nope/turns")).status_code == 404
+        assert (await client.delete("/api/sessions/nope")).status_code == 404

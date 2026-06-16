@@ -6,7 +6,7 @@ from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -21,8 +21,11 @@ from apps.api.contracts import (
     ConversationTurnRequest,
     ConversationTurnResponse,
     HealthResponse,
+    HistoryResponse,
     ResponseMeta,
+    SessionListResponse,
     SessionStartResponse,
+    SessionSummary,
     TimingMetrics,
 )
 from apps.api.database import Database
@@ -175,6 +178,38 @@ async def create_session(db: Database = Depends(get_db)) -> SessionStartResponse
     await db.create_session(session_id)
     logger.debug("Session created: %s", session_id)
     return SessionStartResponse(session_id=session_id)
+
+
+@app.get("/api/sessions", response_model=SessionListResponse)
+async def list_sessions(db: Database = Depends(get_db)) -> SessionListResponse:
+    return SessionListResponse(sessions=await db.list_sessions())
+
+
+@app.get("/api/sessions/{session_id}", response_model=SessionSummary)
+async def get_session(
+    session_id: str, db: Database = Depends(get_db)
+) -> SessionSummary:
+    summary = await db.get_session(session_id)
+    if summary is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return summary
+
+
+@app.get("/api/sessions/{session_id}/turns", response_model=HistoryResponse)
+async def get_session_turns(
+    session_id: str, db: Database = Depends(get_db)
+) -> HistoryResponse:
+    if await db.get_session(session_id) is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return HistoryResponse(
+        session_id=session_id, turns=await db.get_turns(session_id)
+    )
+
+
+@app.delete("/api/sessions/{session_id}", status_code=204)
+async def delete_session(session_id: str, db: Database = Depends(get_db)) -> None:
+    if not await db.delete_session(session_id):
+        raise HTTPException(status_code=404, detail="Session not found")
 
 
 @app.post("/api/turn", response_model=ConversationTurnResponse)

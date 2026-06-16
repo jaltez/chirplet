@@ -50,6 +50,10 @@ def mock_db():
     db.touch_session = AsyncMock()
     db.save_turn = AsyncMock()
     db.get_history = AsyncMock(return_value=[])
+    db.get_turns = AsyncMock(return_value=[])
+    db.get_session = AsyncMock(return_value=None)
+    db.list_sessions = AsyncMock(return_value=[])
+    db.delete_session = AsyncMock(return_value=False)
     db.delete_expired_sessions = AsyncMock(return_value=0)
     db.connect = AsyncMock()
     db.close = AsyncMock()
@@ -334,3 +338,113 @@ class TestRequestId:
         long_id = "x" * 200
         res = await client.get("/api/health", headers={"X-Request-ID": long_id})
         assert len(res.headers["X-Request-ID"]) <= 64
+
+
+class TestSessionListEndpoint:
+    @pytest.mark.asyncio
+    async def test_list_sessions_returns_empty(self, client):
+        res = await client.get("/api/sessions")
+        assert res.status_code == 200
+        assert res.json() == {"sessions": []}
+
+    @pytest.mark.asyncio
+    async def test_list_sessions_returns_summaries(self, client, mock_db):
+        from apps.api.contracts import SessionSummary
+
+        mock_db.list_sessions = AsyncMock(return_value=[
+            SessionSummary(
+                session_id="s1", created_at="2025-01-01T00:00:00+00:00",
+                last_active_at="2025-01-01T00:01:00+00:00", turn_count=2,
+            ),
+            SessionSummary(
+                session_id="s2", created_at="2025-01-01T00:00:00+00:00",
+                last_active_at="2025-01-01T00:02:00+00:00", turn_count=0,
+            ),
+        ])
+
+        res = await client.get("/api/sessions")
+        assert res.status_code == 200
+        data = res.json()
+        assert len(data["sessions"]) == 2
+        assert data["sessions"][0]["session_id"] == "s1"
+        assert data["sessions"][0]["turn_count"] == 2
+        assert data["sessions"][1]["turn_count"] == 0
+
+
+class TestGetSessionEndpoint:
+    @pytest.mark.asyncio
+    async def test_get_existing_session(self, client, mock_db):
+        from apps.api.contracts import SessionSummary
+
+        mock_db.get_session = AsyncMock(return_value=SessionSummary(
+            session_id="abc", created_at="2025-01-01T00:00:00+00:00",
+            last_active_at="2025-01-01T00:05:00+00:00", turn_count=3,
+        ))
+
+        res = await client.get("/api/sessions/abc")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["session_id"] == "abc"
+        assert data["turn_count"] == 3
+
+    @pytest.mark.asyncio
+    async def test_get_missing_session_returns_404(self, client):
+        res = await client.get("/api/sessions/nope")
+        assert res.status_code == 404
+        assert "not found" in res.json()["detail"]
+
+
+class TestGetSessionTurnsEndpoint:
+    @pytest.mark.asyncio
+    async def test_get_turns_for_existing_session(self, client, mock_db):
+        from apps.api.contracts import SessionSummary, TurnRecord
+
+        mock_db.get_session = AsyncMock(return_value=SessionSummary(
+            session_id="abc", created_at="2025-01-01T00:00:00+00:00",
+            last_active_at="2025-01-01T00:05:00+00:00", turn_count=2,
+        ))
+        mock_db.get_turns = AsyncMock(return_value=[
+            TurnRecord(id=1, user="hi", assistant="hello", created_at="2025-01-01T00:01:00+00:00"),
+            TurnRecord(id=2, user="how are you", assistant="good", created_at="2025-01-01T00:02:00+00:00"),
+        ])
+
+        res = await client.get("/api/sessions/abc/turns")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["session_id"] == "abc"
+        assert len(data["turns"]) == 2
+        assert data["turns"][0]["user"] == "hi"
+        assert data["turns"][0]["id"] == 1
+        assert data["turns"][1]["assistant"] == "good"
+
+    @pytest.mark.asyncio
+    async def test_get_turns_for_missing_session_returns_404(self, client):
+        res = await client.get("/api/sessions/nope/turns")
+        assert res.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_get_turns_for_existing_session_with_no_turns(self, client, mock_db):
+        from apps.api.contracts import SessionSummary
+
+        mock_db.get_session = AsyncMock(return_value=SessionSummary(
+            session_id="empty", created_at="2025-01-01T00:00:00+00:00",
+            last_active_at="2025-01-01T00:00:00+00:00", turn_count=0,
+        ))
+
+        res = await client.get("/api/sessions/empty/turns")
+        assert res.status_code == 200
+        assert res.json() == {"session_id": "empty", "turns": []}
+
+
+class TestDeleteSessionEndpoint:
+    @pytest.mark.asyncio
+    async def test_delete_existing_session(self, client, mock_db):
+        mock_db.delete_session = AsyncMock(return_value=True)
+        res = await client.delete("/api/sessions/abc")
+        assert res.status_code == 204
+        mock_db.delete_session.assert_awaited_once_with("abc")
+
+    @pytest.mark.asyncio
+    async def test_delete_missing_session_returns_404(self, client):
+        res = await client.delete("/api/sessions/nope")
+        assert res.status_code == 404

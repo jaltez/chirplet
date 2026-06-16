@@ -82,6 +82,29 @@ class HealthResponse(BaseModel):
     session_memory: bool
 
 
+class TurnRecord(BaseModel):
+    id: int
+    user: str
+    assistant: str
+    created_at: str
+
+
+class HistoryResponse(BaseModel):
+    session_id: str
+    turns: list[TurnRecord]
+
+
+class SessionSummary(BaseModel):
+    session_id: str
+    created_at: str
+    last_active_at: str
+    turn_count: int
+
+
+class SessionListResponse(BaseModel):
+    sessions: list[SessionSummary]
+
+
 @dataclass(frozen=True)
 class ChatTurn:
     user: str

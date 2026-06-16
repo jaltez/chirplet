@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 import aiosqlite
 
-from apps.api.contracts import ChatTurn
+from apps.api.contracts import ChatTurn, SessionSummary, TurnRecord
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -102,6 +102,70 @@ class Database:
         turns = [ChatTurn(user=row["user_text"], assistant=row["assistant_text"]) for row in rows]
         turns.reverse()
         return turns
+
+    async def get_turns(self, session_id: str, limit: int = 200) -> list[TurnRecord]:
+        cursor = await self.conn.execute(
+            "SELECT id, user_text, assistant_text, created_at "
+            "FROM conversation_turns WHERE session_id = ? "
+            "ORDER BY created_at ASC LIMIT ?",
+            (session_id, limit),
+        )
+        rows = await cursor.fetchall()
+        return [
+            TurnRecord(
+                id=row["id"],
+                user=row["user_text"],
+                assistant=row["assistant_text"],
+                created_at=row["created_at"],
+            )
+            for row in rows
+        ]
+
+    async def get_session(self, session_id: str) -> SessionSummary | None:
+        cursor = await self.conn.execute(
+            "SELECT session_id, created_at, last_active_at FROM sessions WHERE session_id = ?",
+            (session_id,),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+        count_cursor = await self.conn.execute(
+            "SELECT COUNT(*) AS n FROM conversation_turns WHERE session_id = ?",
+            (session_id,),
+        )
+        count_row = await count_cursor.fetchone()
+        return SessionSummary(
+            session_id=row["session_id"],
+            created_at=row["created_at"],
+            last_active_at=row["last_active_at"],
+            turn_count=count_row["n"],
+        )
+
+    async def list_sessions(self, limit: int = 50) -> list[SessionSummary]:
+        cursor = await self.conn.execute(
+            "SELECT s.session_id, s.created_at, s.last_active_at, "
+            "       (SELECT COUNT(*) FROM conversation_turns t WHERE t.session_id = s.session_id) AS n "
+            "FROM sessions s "
+            "ORDER BY s.last_active_at DESC LIMIT ?",
+            (limit,),
+        )
+        rows = await cursor.fetchall()
+        return [
+            SessionSummary(
+                session_id=row["session_id"],
+                created_at=row["created_at"],
+                last_active_at=row["last_active_at"],
+                turn_count=row["n"],
+            )
+            for row in rows
+        ]
+
+    async def delete_session(self, session_id: str) -> bool:
+        cursor = await self.conn.execute(
+            "DELETE FROM sessions WHERE session_id = ?", (session_id,)
+        )
+        await self.conn.commit()
+        return cursor.rowcount > 0
 
     async def delete_expired_sessions(self, ttl_minutes: int) -> int:
         cursor = await self.conn.execute(
