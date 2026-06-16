@@ -422,6 +422,45 @@ body[data-mouth="round"] .mouth {
   background: rgba(255, 255, 255, 0.82);
 }
 
+.debug-sessions {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.debug-sessions-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.debug-field-label {
+  font-size: 0.95rem;
+  color: var(--ink);
+}
+
+.debug-sessions select,
+#sessions-list {
+  width: 100%;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid rgba(29, 42, 42, 0.14);
+  border-radius: 1rem;
+  font: inherit;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+#sessions-list {
+  font-family: "IBM Plex Mono", "JetBrains Mono", monospace;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+#sessions-turns {
+  max-height: 12rem;
+  min-height: 4rem;
+}
+
 .ghost-button {
   justify-self: start;
   padding: 0.7rem 1rem;

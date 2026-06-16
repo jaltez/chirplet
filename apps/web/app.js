@@ -23,6 +23,9 @@ const spokenText = document.querySelector("#spoken-text")
 const manualInput = document.querySelector("#manual-input")
 const manualSend = document.querySelector("#manual-send")
 const voiceSelect = document.querySelector("#voice-select")
+const sessionsList = document.querySelector("#sessions-list")
+const sessionsRefresh = document.querySelector("#sessions-refresh")
+const sessionsTurns = document.querySelector("#sessions-turns")
 const debugLog = document.querySelector("#debug-log")
 
 const VOICE_STORAGE_KEY = "chirplet.voiceURI"
@@ -462,6 +465,68 @@ voiceSelect.addEventListener("change", () => {
   }
 })
 
+async function loadSessions() {
+  try {
+    const res = await fetch("/api/sessions")
+    if (!res.ok) throw new Error(`Request failed with ${res.status}`)
+    const payload = await res.json()
+    const sessions = payload.sessions || []
+    sessionsList.innerHTML = ""
+    if (sessions.length === 0) {
+      const option = document.createElement("option")
+      option.value = ""
+      option.textContent = "(no sessions yet)"
+      option.disabled = true
+      option.selected = true
+      sessionsList.appendChild(option)
+      sessionsTurns.textContent = ""
+      return
+    }
+    for (const s of sessions) {
+      const option = document.createElement("option")
+      option.value = s.session_id
+      const ts = (s.last_active_at || "").slice(0, 19).replace("T", " ")
+      option.textContent = `${s.session_id.slice(0, 8)}  ·  ${s.turn_count} turn${s.turn_count === 1 ? "" : "s"}  ·  ${ts}`
+      sessionsList.appendChild(option)
+    }
+    // Auto-select the first (most recent) session and load its turns.
+    sessionsList.selectedIndex = 0
+    await loadSessionTurns(sessions[0].session_id)
+  } catch (e) {
+    logDebug("Sessions", e.message)
+  }
+}
+
+async function loadSessionTurns(sessionId) {
+  if (!sessionId) {
+    sessionsTurns.textContent = ""
+    return
+  }
+  try {
+    const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/turns`)
+    if (!res.ok) {
+      sessionsTurns.textContent = `(failed to load: ${res.status})`
+      return
+    }
+    const payload = await res.json()
+    const turns = payload.turns || []
+    if (turns.length === 0) {
+      sessionsTurns.textContent = "(no turns yet)"
+      return
+    }
+    sessionsTurns.textContent = turns
+      .map((t) => `[${(t.created_at || "").slice(0, 19)}]\n  you: ${t.user}\n  chirplet: ${t.assistant}`)
+      .join("\n\n")
+  } catch (e) {
+    sessionsTurns.textContent = `(error: ${e.message})`
+  }
+}
+
+sessionsRefresh.addEventListener("click", loadSessions)
+sessionsList.addEventListener("change", () => {
+  loadSessionTurns(sessionsList.value)
+})
+
 if (window.speechSynthesis) {
   window.speechSynthesis.addEventListener("voiceschanged", populateVoiceList)
 }
@@ -487,6 +552,8 @@ async function boot() {
       mouth: "closed",
       action: "idle",
     })
+    populateVoiceList()
+    loadSessions()
   } catch (error) {
     logDebug("Boot", error.message)
     setAvatarState("error", "concerned", "I could not start the app.", {

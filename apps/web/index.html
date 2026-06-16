@@ -56,6 +56,17 @@
             </select>
           </label>
 
+          <div class="debug-sessions">
+            <div class="debug-sessions-header">
+              <span class="debug-field-label">Sessions</span>
+              <button id="sessions-refresh" class="ghost-button" type="button">Refresh</button>
+            </div>
+            <select id="sessions-list" size="5" aria-label="Saved sessions">
+              <option value="">(no sessions loaded)</option>
+            </select>
+            <pre id="sessions-turns" class="debug-log" aria-label="Session turns"></pre>
+          </div>
+
           <pre id="debug-log" class="debug-log"></pre>
         </div>
       </details>
