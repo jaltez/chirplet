@@ -60,17 +60,14 @@ def mock_db():
 async def client(mock_provider, mock_db):
     import apps.api.main as main_module
 
-    orig_db = main_module.database
-    orig_provider = main_module.provider
-    main_module.database = mock_db
-    main_module.provider = mock_provider
+    main_module.app.dependency_overrides[main_module.get_db] = lambda: mock_db
+    main_module.app.dependency_overrides[main_module.get_provider] = lambda: mock_provider
 
     transport = ASGITransport(app=main_module.app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
 
-    main_module.database = orig_db
-    main_module.provider = orig_provider
+    main_module.app.dependency_overrides.clear()
 
 
 class TestHealthEndpoint:

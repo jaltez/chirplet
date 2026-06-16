@@ -6,7 +6,7 @@ from pathlib import Path
 from time import perf_counter
 from uuid import uuid4
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -40,56 +40,58 @@ WEB_DIR = ROOT_DIR / "apps" / "web"
 
 settings: Settings = get_settings()
 logger = setup_logging(settings.log_level)
-database: Database | None = None
-provider: BaseProvider | None = None
 
 
-async def _cleanup_sessions_periodically() -> None:
-    while True:
-        try:
-            deleted = await database.delete_expired_sessions(settings.session_ttl_minutes)
-            if deleted:
-                logger.info("Cleaned up %d expired sessions", deleted)
-        except Exception:
-            logger.exception("Session cleanup failed")
-        await asyncio.sleep(settings.session_cleanup_interval_seconds)
+def get_db(request: Request) -> Database:
+    db = getattr(request.app.state, "database", None)
+    if db is None:
+        raise RuntimeError("Application not started")
+    return db
+
+
+def get_provider(request: Request) -> BaseProvider:
+    p = getattr(request.app.state, "provider", None)
+    if p is None:
+        raise RuntimeError("Application not started")
+    return p
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global database, provider
-    database = Database(path=str(settings.database_path), logger=logger.getChild("db"))
+    db = Database(path=settings.database_path, logger=logger.getChild("db"))
     provider = create_provider(settings, logger.getChild("provider"))
+    app.state.database = db
+    app.state.provider = provider
 
-    database.path.parent.mkdir(parents=True, exist_ok=True)
-    await database.connect()
+    Path(db.path).parent.mkdir(parents=True, exist_ok=True)
+    await db.connect()
     logger.info("Chirplet starting env=%s provider=%s configured=%s",
                 settings.app_env, provider.provider_name, provider.configured)
-    cleanup_task = asyncio.create_task(_cleanup_sessions_periodically())
+    cleanup_task = asyncio.create_task(_cleanup_sessions_periodically(app))
     yield
     cleanup_task.cancel()
     try:
         await cleanup_task
     except asyncio.CancelledError:
         pass
-    if provider is not None:
-        await provider.aclose()
-    await database.close()
-    database = None
-    provider = None
+    await provider.aclose()
+    await db.close()
+    app.state.database = None
+    app.state.provider = None
     logger.info("Chirplet stopped")
 
 
-def _get_db() -> Database:
-    if database is None:
-        raise RuntimeError("Application not started")
-    return database
-
-
-def _get_provider() -> BaseProvider:
-    if provider is None:
-        raise RuntimeError("Application not started")
-    return provider
+async def _cleanup_sessions_periodically(app: FastAPI) -> None:
+    while True:
+        try:
+            db = app.state.database
+            if db is not None:
+                deleted = await db.delete_expired_sessions(settings.session_ttl_minutes)
+                if deleted:
+                    logger.info("Cleaned up %d expired sessions", deleted)
+        except Exception:
+            logger.exception("Session cleanup failed")
+        await asyncio.sleep(settings.session_cleanup_interval_seconds)
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
@@ -158,19 +160,17 @@ async def serve_index() -> FileResponse:
 
 
 @app.get("/api/health", response_model=HealthResponse)
-async def health() -> HealthResponse:
-    p = _get_provider()
+async def health(provider: BaseProvider = Depends(get_provider)) -> HealthResponse:
     return HealthResponse(
         status="ok",
-        provider=p.provider_name,
-        provider_configured=p.configured,
+        provider=provider.provider_name,
+        provider_configured=provider.configured,
         session_memory=settings.enable_session_memory,
     )
 
 
 @app.post("/api/session", response_model=SessionStartResponse)
-async def create_session() -> SessionStartResponse:
-    db = _get_db()
+async def create_session(db: Database = Depends(get_db)) -> SessionStartResponse:
     session_id = str(uuid4())
     await db.create_session(session_id)
     logger.debug("Session created: %s", session_id)
@@ -178,45 +178,47 @@ async def create_session() -> SessionStartResponse:
 
 
 @app.post("/api/turn", response_model=ConversationTurnResponse)
-async def create_turn(request: ConversationTurnRequest) -> ConversationTurnResponse:
-    db = _get_db()
-    p = _get_provider()
+async def create_turn(
+    request: ConversationTurnRequest,
+    db: Database = Depends(get_db),
+    provider: BaseProvider = Depends(get_provider),
+) -> ConversationTurnResponse:
     started_at = _now_iso()
     started_perf = perf_counter()
     session_id = request.session_id or str(uuid4())
-    meta = ResponseMeta(provider=p.provider_name, fallback_used=False)
+    meta = ResponseMeta(provider=provider.provider_name, fallback_used=False)
 
     await db.ensure_session(session_id)
     history = await db.get_history(session_id, settings.session_turn_limit)
 
     try:
-        assistant = await p.complete_turn(
+        assistant = await provider.complete_turn(
             transcript=request.transcript,
             locale=request.locale,
             history=history,
         )
         await db.save_turn(session_id, request.transcript, assistant.text)
         logger.info("Turn completed session=%s provider=%s",
-                     session_id[:8], p.provider_name)
+                     session_id[:8], provider.provider_name)
     except ProviderConfigurationError as exc:
         logger.warning("Provider not configured: %s", exc)
         assistant = _fallback_response(
             locale=request.locale,
             state=AvatarState.DISCONNECTED,
         )
-        meta = ResponseMeta(provider=p.provider_name, fallback_used=True, issue=str(exc))
+        meta = ResponseMeta(provider=provider.provider_name, fallback_used=True, issue=str(exc))
     except ProviderProtocolError as exc:
         logger.error("Provider protocol error: %s", exc)
         assistant = _fallback_response(
             locale=request.locale,
             state=AvatarState.ERROR,
         )
-        meta = ResponseMeta(provider=p.provider_name, fallback_used=True, issue=str(exc))
+        meta = ResponseMeta(provider=provider.provider_name, fallback_used=True, issue=str(exc))
 
     completed_at = _now_iso()
     duration_ms = int((perf_counter() - started_perf) * 1000)
     logger.info("Turn finished session=%s provider=%s fallback=%s duration_ms=%d",
-                session_id, p.provider_name, meta.fallback_used, duration_ms)
+                session_id, provider.provider_name, meta.fallback_used, duration_ms)
 
     return ConversationTurnResponse(
         session_id=session_id,
@@ -231,9 +233,12 @@ async def create_turn(request: ConversationTurnRequest) -> ConversationTurnRespo
 
 
 @app.post("/api/turn/stream")
-async def create_turn_stream(turn_request: ConversationTurnRequest, http_request: Request):
-    db = _get_db()
-    p = _get_provider()
+async def create_turn_stream(
+    turn_request: ConversationTurnRequest,
+    http_request: Request,
+    db: Database = Depends(get_db),
+    provider: BaseProvider = Depends(get_provider),
+):
     session_id = turn_request.session_id or str(uuid4())
 
     await db.ensure_session(session_id)
@@ -241,7 +246,7 @@ async def create_turn_stream(turn_request: ConversationTurnRequest, http_request
 
     async def event_stream():
         try:
-            async for event in p.stream_turn(
+            async for event in provider.stream_turn(
                 transcript=turn_request.transcript,
                 locale=turn_request.locale,
                 history=history,
