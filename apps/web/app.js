@@ -22,7 +22,10 @@ const talkButton = document.querySelector("#talk-button")
 const spokenText = document.querySelector("#spoken-text")
 const manualInput = document.querySelector("#manual-input")
 const manualSend = document.querySelector("#manual-send")
+const voiceSelect = document.querySelector("#voice-select")
 const debugLog = document.querySelector("#debug-log")
+
+const VOICE_STORAGE_KEY = "chirplet.voiceURI"
 
 function logDebug(label, value) {
   const timestamp = new Date().toLocaleTimeString()
@@ -234,6 +237,38 @@ async function submitTurn(transcript) {
   }
 }
 
+function populateVoiceList() {
+  if (!window.speechSynthesis) return
+  const voices = window.speechSynthesis.getVoices()
+  if (voices.length === 0) return
+
+  const savedURI = localStorage.getItem(VOICE_STORAGE_KEY)
+  const current = savedURI ? voices.find((v) => v.voiceURI === savedURI) : null
+
+  const matching = voices.filter((v) =>
+    v.lang && v.lang.toLowerCase().startsWith(state.locale.toLowerCase().split("-")[0])
+  )
+  const list = matching.length > 0 ? matching : voices
+
+  voiceSelect.innerHTML = ""
+  const defaultOption = document.createElement("option")
+  defaultOption.value = ""
+  defaultOption.textContent = current
+    ? `(browser default — ${current.name})`
+    : "(browser default)"
+  voiceSelect.appendChild(defaultOption)
+
+  for (const voice of list) {
+    const option = document.createElement("option")
+    option.value = voice.voiceURI
+    option.textContent = `${voice.name} (${voice.lang})${voice.default ? " — default" : ""}`
+    voiceSelect.appendChild(option)
+  }
+
+  voiceSelect.disabled = false
+  voiceSelect.value = current ? current.voiceURI : ""
+}
+
 function speakResponse(text, lang, expression, action) {
   if (!window.speechSynthesis) {
     spokenText.textContent = text
@@ -246,6 +281,14 @@ function speakResponse(text, lang, expression, action) {
   utterance.rate = 1
   utterance.pitch = 1
   utterance.volume = 1
+
+  const savedURI = localStorage.getItem(VOICE_STORAGE_KEY)
+  if (savedURI) {
+    const voice = window.speechSynthesis.getVoices().find((v) => v.voiceURI === savedURI)
+    if (voice) {
+      utterance.voice = voice
+    }
+  }
 
   utterance.onstart = () => {
     applyExpression({
@@ -408,6 +451,20 @@ manualInput.addEventListener("keydown", (e) => {
     manualSend.click()
   }
 })
+
+voiceSelect.addEventListener("change", () => {
+  if (voiceSelect.value) {
+    localStorage.setItem(VOICE_STORAGE_KEY, voiceSelect.value)
+    logDebug("Voice", voiceSelect.value)
+  } else {
+    localStorage.removeItem(VOICE_STORAGE_KEY)
+    logDebug("Voice", "browser default")
+  }
+})
+
+if (window.speechSynthesis) {
+  window.speechSynthesis.addEventListener("voiceschanged", populateVoiceList)
+}
 
 async function boot() {
   try {

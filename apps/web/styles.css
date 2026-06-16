@@ -468,6 +468,7 @@ body[data-mouth="round"] .mouth {
 
 .ghost-button:focus-visible,
 .debug-field input:focus-visible,
+.debug-field select:focus-visible,
 .debug-panel summary:focus-visible {
   outline: 2px solid var(--accent-listening);
   outline-offset: 2px;
@@ -509,6 +510,11 @@ body[data-mouth="round"] .mouth {
 
   .talk-button {
     padding: 0.85rem 1.2rem;
+    min-width: 8rem;
+    font-size: 0.95rem;
+  }
+}
+1.2rem;
     min-width: 8rem;
     font-size: 0.95rem;
   }
