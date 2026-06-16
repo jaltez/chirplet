@@ -240,3 +240,125 @@ class TestCreateProvider:
         s = _make_settings(llm_provider="ollama")
         p = create_provider(s, _logger())
         assert isinstance(p, OllamaProvider)
+
+
+# ---------------------------------------------------------------------------
+# Property tests for the hand-rolled partial-JSON decoder.
+# These invariants protect the streaming-text path: as the LLM emits
+# additional characters, the previewed text must only ever grow.
+# ---------------------------------------------------------------------------
+
+# Sample text that covers: ASCII, accented chars (UTF-8), quotes, backslashes,
+# and JSON control characters that need unescaping.
+_TEXT_SAMPLES = [
+    "hello",
+    "",
+    "a string with \"quotes\" and \\backslashes\\",
+    "acentos: ñáéíóú",
+    "newline\nand\ttab",
+    "unicode \u2603 snowman",
+    "x" * 200,
+]
+
+# Junk that real LLM output may contain around the JSON object.
+_NOISE_PREFIXES = ["", "Here you go: ", "```json\n", "```\n", "  \n\t"]
+_NOISE_SUFFIXES = ["", "\n", "\n```", " hope that helps!", "  \n\t"]
+
+
+def _build_object(text: str) -> str:
+    """Build a complete JSON object string from a raw Python text value."""
+    payload = {"text": text, "expression": {"state": "speaking", "mood": "friendly", "mouth": "open"}}
+    return json.dumps(payload, ensure_ascii=False)
+
+
+def _make_preview_provider() -> BaseProvider:
+    s = _make_settings()
+    return HermesProvider(s, _logger())
+
+
+class TestExtractTextPreviewProperties:
+    def test_monotonic_for_ascii_text(self):
+        from hypothesis import given, settings
+        from hypothesis import strategies as st
+
+        provider = _make_preview_provider()
+        for text in _TEXT_SAMPLES:
+            obj = _build_object(text)
+            previous = ""
+            for length in range(0, len(obj) + 1):
+                chunk = obj[:length]
+                preview = provider._extract_text_preview(chunk)
+                if preview is None:
+                    continue
+                assert preview.startswith(previous), (
+                    f"Preview shrank at length {length}: "
+                    f"prev={previous!r} new={preview!r} text={text!r}"
+                )
+                previous = preview
+            assert previous == text, (
+                f"Final preview mismatch: got {previous!r}, expected {text!r}"
+            )
+
+    def test_final_preview_matches_decoded_text(self):
+        from hypothesis import given, settings
+        from hypothesis import strategies as st
+
+        provider = _make_preview_provider()
+
+        @given(st.text(min_size=0, max_size=80))
+        @settings(max_examples=50, deadline=None)
+        def prop(text: str) -> None:
+            obj = _build_object(text)
+            preview = provider._extract_text_preview(obj)
+            assert preview is not None
+            assert preview == text
+
+        prop()
+
+    def test_ignores_surrounding_junk(self):
+        from hypothesis import given, settings
+        from hypothesis import strategies as st
+
+        provider = _make_preview_provider()
+
+        @given(
+            st.text(min_size=0, max_size=60),
+            st.sampled_from(_NOISE_PREFIXES),
+            st.sampled_from(_NOISE_SUFFIXES),
+        )
+        @settings(max_examples=80, deadline=None)
+        def prop(text: str, prefix: str, suffix: str) -> None:
+            wrapped = prefix + _build_object(text) + suffix
+            preview = provider._extract_text_preview(wrapped)
+            assert preview is not None
+            assert preview == text
+
+        prop()
+
+    def test_returns_none_when_no_object_present(self):
+        provider = _make_preview_provider()
+        assert provider._extract_text_preview("no json here at all") is None
+        assert provider._extract_text_preview("") is None
+        assert provider._extract_text_preview("```\nsome prose\n```") is None
+
+    def test_handles_partial_object_at_each_byte(self):
+        from hypothesis import given, settings
+        from hypothesis import strategies as st
+
+        provider = _make_preview_provider()
+
+        @given(st.text(min_size=1, max_size=40))
+        @settings(max_examples=40, deadline=None)
+        def prop(text: str) -> None:
+            obj = _build_object(text)
+            previous = ""
+            for length in range(1, len(obj) + 1):
+                preview = provider._extract_text_preview(obj[:length])
+                if preview is None:
+                    continue
+                assert preview.startswith(previous)
+                previous = preview
+            assert previous == text
+
+        prop()
+
