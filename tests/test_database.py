@@ -18,21 +18,8 @@ async def db(tmp_path):
 
 class TestDatabase:
     @pytest.mark.asyncio
-    async def test_create_session(self, db):
-        await db.create_session("s1")
-
-    @pytest.mark.asyncio
-    async def test_touch_session(self, db):
-        await db.create_session("s1")
-        await db.touch_session("s1")
-
-    @pytest.mark.asyncio
-    async def test_touch_nonexistent_does_nothing(self, db):
-        await db.touch_session("nonexistent")
-
-    @pytest.mark.asyncio
     async def test_save_and_retrieve_history(self, db):
-        await db.create_session("s1")
+        await db.ensure_session("s1")
         await db.save_turn("s1", "hello", "hi there")
         await db.save_turn("s1", "how are you", "good")
 
@@ -45,7 +32,7 @@ class TestDatabase:
 
     @pytest.mark.asyncio
     async def test_history_limit(self, db):
-        await db.create_session("s1")
+        await db.ensure_session("s1")
         for i in range(10):
             await db.save_turn("s1", f"q{i}", f"a{i}")
 
@@ -56,8 +43,8 @@ class TestDatabase:
 
     @pytest.mark.asyncio
     async def test_multiple_sessions_isolated(self, db):
-        await db.create_session("s1")
-        await db.create_session("s2")
+        await db.ensure_session("s1")
+        await db.ensure_session("s2")
         await db.save_turn("s1", "q1", "a1")
         await db.save_turn("s2", "q2", "a2")
 
@@ -75,13 +62,13 @@ class TestDatabase:
 
     @pytest.mark.asyncio
     async def test_delete_expired_sessions(self, db):
-        await db.create_session("s1")
+        await db.ensure_session("s1")
         deleted = await db.delete_expired_sessions(1440)
         assert deleted == 0
 
     @pytest.mark.asyncio
     async def test_delete_expired_sessions_with_iso_timestamps(self, db):
-        await db.create_session("s1")
+        await db.ensure_session("s1")
         await db.save_turn("s1", "hello", "hi")
         expired_at = (datetime.now(timezone.utc) - timedelta(seconds=5)).isoformat()
         await db.conn.execute(

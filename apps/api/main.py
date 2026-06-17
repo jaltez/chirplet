@@ -179,7 +179,7 @@ async def health(provider: BaseProvider = Depends(get_provider)) -> HealthRespon
 @app.post("/api/session", response_model=SessionStartResponse)
 async def create_session(db: Database = Depends(get_db)) -> SessionStartResponse:
     session_id = str(uuid4())
-    await db.create_session(session_id)
+    await db.ensure_session(session_id)
     logger.debug("Session created: %s", session_id)
     return SessionStartResponse(session_id=session_id)
 

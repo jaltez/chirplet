@@ -59,14 +59,6 @@ class Database:
             raise RuntimeError("Database not connected")
         return self._conn
 
-    async def create_session(self, session_id: str) -> None:
-        now = datetime.now(timezone.utc).isoformat()
-        await self.conn.execute(
-            "INSERT OR IGNORE INTO sessions (session_id, created_at, last_active_at) VALUES (?, ?, ?)",
-            (session_id, now, now),
-        )
-        await self.conn.commit()
-
     async def ensure_session(self, session_id: str) -> None:
         now = datetime.now(timezone.utc).isoformat()
         await self.conn.execute(
@@ -74,14 +66,6 @@ class Database:
             "VALUES (?, ?, ?) "
             "ON CONFLICT(session_id) DO UPDATE SET last_active_at = excluded.last_active_at",
             (session_id, now, now),
-        )
-        await self.conn.commit()
-
-    async def touch_session(self, session_id: str) -> None:
-        now = datetime.now(timezone.utc).isoformat()
-        await self.conn.execute(
-            "UPDATE sessions SET last_active_at = ? WHERE session_id = ?",
-            (now, session_id),
         )
         await self.conn.commit()
 
