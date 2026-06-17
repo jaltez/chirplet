@@ -546,7 +546,20 @@ if (window.speechSynthesis) {
   window.speechSynthesis.addEventListener("voiceschanged", populateVoiceList)
 }
 
+function applyUrlPreferences() {
+  // ?debug=1 (or #debug) opens the debug panel automatically.
+  // Useful for sharing a link to a specific session or just
+  // skipping the click for power users.
+  const params = new URLSearchParams(window.location.search)
+  const hash = window.location.hash.replace("#", "")
+  if (params.get("debug") === "1" || hash === "debug") {
+    const panel = document.querySelector(".debug-panel")
+    if (panel) panel.open = true
+  }
+}
+
 async function boot() {
+  applyUrlPreferences()
   try {
     const response = await fetch("/api/health")
     if (!response.ok) throw new Error(`Health check failed with ${response.status}`)

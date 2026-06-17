@@ -238,3 +238,31 @@ class TestSseStreaming:
             f"Stream continued after interrupt: before={text_after!r} after={text_final!r}"
         )
         page.close()
+
+
+class TestUrlDebugPanel:
+    def test_debug_panel_starts_closed(self, app_server):
+        base_url, browser = app_server
+        page = browser.new_page()
+        _stub_browser_apis(page)
+        page.goto(base_url)
+        # The <details> element is open when it has the `open` attribute.
+        # Default (no URL param) -> panel is closed.
+        assert not page.evaluate("document.querySelector('.debug-panel').open")
+        page.close()
+
+    def test_debug_panel_opens_with_query_param(self, app_server):
+        base_url, browser = app_server
+        page = browser.new_page()
+        _stub_browser_apis(page)
+        page.goto(f"{base_url}/?debug=1")
+        assert page.evaluate("document.querySelector('.debug-panel').open")
+        page.close()
+
+    def test_debug_panel_opens_with_hash(self, app_server):
+        base_url, browser = app_server
+        page = browser.new_page()
+        _stub_browser_apis(page)
+        page.goto(f"{base_url}/#debug")
+        assert page.evaluate("document.querySelector('.debug-panel').open")
+        page.close()
