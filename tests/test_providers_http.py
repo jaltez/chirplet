@@ -316,6 +316,26 @@ class TestHermesStreamImpl:
                 async for _ in provider.stream_turn("hello", "en-GB", []):
                     pass
 
+    @pytest.mark.asyncio
+    async def test_sends_authorization_header_when_api_key_set(self):
+        s = _make_settings(hermes_api_key="sk-stream-test")
+        provider = HermesProvider(s, _logger())
+        full_json = json.dumps({
+            "text": "hi",
+            "expression": {"state": "speaking", "mood": "friendly", "mouth": "smile"},
+            "action": "idle",
+            "voice_locale": "en-GB",
+        })
+        sse_body = _sse_line({"choices": [{"delta": {"content": full_json}}]}) + _sse_done()
+        with respx.mock(base_url="http://hermes.test") as mock:
+            route = mock.post("/v1/chat/completions").respond(
+                200, content=sse_body, headers={"content-type": "text/event-stream"}
+            )
+            async for _ in provider.stream_turn("hello", "en-GB", []):
+                pass
+        sent = route.calls.last.request
+        assert sent.headers["authorization"] == "Bearer sk-stream-test"
+
 
 # ---------------------------------------------------------------------------
 # OllamaProvider: _complete_impl

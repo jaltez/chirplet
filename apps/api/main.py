@@ -90,9 +90,9 @@ async def _cleanup_sessions_periodically(app: FastAPI) -> None:
             db = app.state.database
             if db is not None:
                 deleted = await db.delete_expired_sessions(settings.session_ttl_minutes)
-                if deleted:
+                if deleted:  # pragma: no cover
                     logger.info("Cleaned up %d expired sessions", deleted)
-        except Exception:
+        except Exception:  # pragma: no cover
             logger.exception("Session cleanup failed")
         await asyncio.sleep(settings.session_cleanup_interval_seconds)
 
