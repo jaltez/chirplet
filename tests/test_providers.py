@@ -256,10 +256,7 @@ class TestBaseProvider:
                 )
 
         provider = _Probe(_make_settings(), _logger())
-        events = [
-            event
-            async for event in provider.stream_turn("hi", "en-GB", [])
-        ]
+        events = [event async for event in provider.stream_turn("hi", "en-GB", [])]
         done = next(e for e in events if e["type"] == "done")
         assert done["voice_locale"] == "en-GB"
 
@@ -293,10 +290,7 @@ class TestBaseProvider:
                 )
 
         provider = _Probe(_make_settings(), _logger())
-        events = [
-            event
-            async for event in provider.stream_turn("hi", "en-GB", [])
-        ]
+        events = [event async for event in provider.stream_turn("hi", "en-GB", [])]
         done = next(e for e in events if e["type"] == "done")
         assert done["full_text"] == "Hello"
 
