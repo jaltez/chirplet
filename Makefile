@@ -1,4 +1,4 @@
-.PHONY: test test-cov schema clean
+.PHONY: test test-cov schema lint clean
 
 test:
 	.venv/bin/python -m pytest -q
@@ -8,3 +8,6 @@ test-cov:
 
 schema:
 	.venv/bin/python tools/generate_schema.py --write
+
+lint:
+	.venv/bin/ruff check apps tests tools

@@ -2,7 +2,8 @@ import json
 import logging
 import re
 from abc import ABC, abstractmethod
-from typing import Any, AsyncGenerator, Awaitable, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable
+from typing import Any
 
 import httpx
 
@@ -284,7 +285,7 @@ class HermesProvider(BaseProvider):
         self.logger.debug("Hermes stream request model=%s", self.settings.hermes_model)
 
         try:
-            async with httpx.AsyncClient(timeout=self.settings.hermes_timeout_seconds) as client:
+            async with httpx.AsyncClient(timeout=self.settings.hermes_timeout_seconds) as client:  # noqa: SIM117
                 async with client.stream("POST", self.settings.hermes_chat_url, headers=headers, json=payload) as response:
                     response.raise_for_status()
                     async for line in response.aiter_lines():

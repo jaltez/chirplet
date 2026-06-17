@@ -3,8 +3,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = REPO_ROOT / "packages" / "contracts" / "assistant-turn.schema.json"
 GENERATOR = REPO_ROOT / "tools" / "generate_schema.py"

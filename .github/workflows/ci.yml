@@ -26,6 +26,9 @@ jobs:
       - name: Install Playwright browsers
         run: python -m playwright install --with-deps chromium
 
+      - name: Lint
+        run: make lint
+
       - name: Verify JSON-Schema is in sync
         run: |
           python tools/generate_schema.py > /tmp/regen.json

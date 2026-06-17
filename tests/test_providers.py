@@ -1,25 +1,21 @@
 import json
 import logging
+from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import AsyncGenerator
 
 import pytest
 
+from apps.api.config import Settings
 from apps.api.contracts import (
     AssistantPayload,
-    AvatarExpression,
-    AvatarMood,
     AvatarState,
     ChatTurn,
-    MouthCue,
 )
-from apps.api.config import Settings
 from apps.api.providers import (
     BaseProvider,
     HermesProvider,
     OllamaProvider,
     ProviderConfigurationError,
-    ProviderProtocolError,
     create_provider,
 )
 
@@ -278,8 +274,6 @@ def _make_preview_provider() -> BaseProvider:
 
 class TestExtractTextPreviewProperties:
     def test_monotonic_for_ascii_text(self):
-        from hypothesis import given, settings
-        from hypothesis import strategies as st
 
         provider = _make_preview_provider()
         for text in _TEXT_SAMPLES:

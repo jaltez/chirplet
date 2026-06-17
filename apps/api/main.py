@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import json
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -17,7 +18,6 @@ from apps.api.contracts import (
     AvatarExpression,
     AvatarMood,
     AvatarState,
-    ChatTurn,
     ConversationTurnRequest,
     ConversationTurnResponse,
     HealthResponse,
@@ -73,10 +73,8 @@ async def lifespan(app: FastAPI):
     cleanup_task = asyncio.create_task(_cleanup_sessions_periodically(app))
     yield
     cleanup_task.cancel()
-    try:
+    with contextlib.suppress(asyncio.CancelledError):
         await cleanup_task
-    except asyncio.CancelledError:
-        pass
     await provider.aclose()
     await db.close()
     app.state.database = None

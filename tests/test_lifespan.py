@@ -11,7 +11,6 @@ short cleanup interval to keep things fast and isolated.
 from __future__ import annotations
 
 import asyncio
-import os
 from pathlib import Path
 
 import pytest
@@ -182,6 +181,7 @@ class TestHistoryRoutesUnderRealLifespan:
 
         # 5. Persist a turn directly via the real database, then re-read.
         from fastapi import Request
+
         from apps.api.main import get_db
 
         request = Request({"type": "http", "app": _app, "headers": []})

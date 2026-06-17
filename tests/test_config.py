@@ -1,10 +1,8 @@
-import os
-import tempfile
 from pathlib import Path
 
 import pytest
 
-from apps.api.config import Settings, _normalize_base_url, _resolve_db_path, _read_bool, get_settings
+from apps.api.config import Settings, _normalize_base_url, _read_bool, _resolve_db_path
 
 
 class TestReadBool:

@@ -15,13 +15,10 @@ returns to idle and the stream stops.
 from __future__ import annotations
 
 import asyncio
-import os
 from pathlib import Path
-from typing import AsyncGenerator
 
 import pytest
 from playwright.sync_api import expect, sync_playwright
-
 
 SLOW_PROVIDER_FULL_JSON = (
     '{"text":"hello world this is a slow stream",'
@@ -115,7 +112,7 @@ def app_server(temp_env):
         # not directly browser-accessible).
         import socket
         import threading
-        from contextlib import contextmanager
+
         import uvicorn
 
         # Pick a free port.

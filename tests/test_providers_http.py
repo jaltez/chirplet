@@ -18,12 +18,7 @@ import respx
 
 from apps.api.config import Settings
 from apps.api.contracts import (
-    AssistantPayload,
-    AvatarExpression,
-    AvatarMood,
     AvatarState,
-    ChatTurn,
-    MouthCue,
 )
 from apps.api.providers import (
     HermesProvider,

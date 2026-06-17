@@ -7,7 +7,6 @@ from apps.api.contracts import (
     AvatarMood,
     AvatarState,
     ConversationTurnRequest,
-    ConversationTurnResponse,
     HealthResponse,
     MouthCue,
     ResponseMeta,

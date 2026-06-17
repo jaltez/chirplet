@@ -1,0 +1,20 @@
+target-version = "py311"
+line-length = 100
+
+[lint]
+# E/F: pycodestyle errors + pyflakes. W: pycodestyle warnings.
+# I: isort (import sort order). B: bugbear (likely bugs).
+# UP: pyupgrade (modern syntax). SIM: simplify.
+# N: pep8-naming (kept lax; we don't enforce full snake_case here).
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+ignore = [
+    "E501",  # line length: handled by the formatter, not the linter
+    "B008",  # function calls in defaults (FastAPI uses Depends(...) heavily)
+    "UP042", # str + Enum: switching to StrEnum breaks "AvatarState.IDLE == 'idle'",
+             # which is a semantic change, not a cosmetic one
+    "UP017", # datetime.UTC alias: cosmetic rename to a 3.11+ alias
+]
+
+[lint.per-file-ignores]
+# tests often have re-exports, asserts in helpers, etc.
+"tests/*" = ["B011"]
