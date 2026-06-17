@@ -5,12 +5,60 @@
   --ink: #1d2a2a;
   --soft-ink: #4d5b59;
   --line: rgba(29, 42, 42, 0.12);
+  --ink-alpha-04: rgba(29, 42, 42, 0.04);
+  --ink-alpha-06: rgba(29, 42, 42, 0.06);
+  --ink-alpha-08: rgba(29, 42, 42, 0.08);
+  --ink-alpha-12: rgba(29, 42, 42, 0.12);
+  --ink-alpha-14: rgba(29, 42, 42, 0.14);
+  --ink-alpha-16: rgba(29, 42, 42, 0.16);
+  --ink-alpha-20: rgba(29, 42, 42, 0.20);
   --accent-listening: #1d8f82;
   --accent-thinking: #c47d2c;
   --accent-speaking: #1d7c54;
   --accent-error: #bd4b35;
   --accent-disconnected: #6f7378;
   --shadow: 0 24px 80px rgba(58, 40, 17, 0.18);
+  --talk-button-text: #fefcf8;
+  --debug-input-bg: rgba(255, 255, 255, 0.82);
+  --debug-log-bg: rgba(29, 42, 42, 0.06);
+  --ghost-button-bg: rgba(29, 42, 42, 0.08);
+  --ambient-left: rgba(29, 143, 130, 0.18);
+  --ambient-right: rgba(196, 125, 44, 0.18);
+  --avatar-face-top: rgba(255, 255, 255, 0.9);
+  --avatar-face-bottom: rgba(246, 232, 205, 0.9);
+  --debug-grid-bg: rgba(255, 255, 255, 0.42);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1f1f;
+    --bg-strong: #14181a;
+    --panel: rgba(28, 34, 34, 0.78);
+    --ink: #ece4d3;
+    --soft-ink: #a8a89e;
+    --line: rgba(236, 228, 211, 0.14);
+    --ink-alpha-04: rgba(236, 228, 211, 0.04);
+    --ink-alpha-06: rgba(236, 228, 211, 0.06);
+    --ink-alpha-08: rgba(236, 228, 211, 0.08);
+    --ink-alpha-12: rgba(236, 228, 211, 0.12);
+    --ink-alpha-14: rgba(236, 228, 211, 0.14);
+    --ink-alpha-16: rgba(236, 228, 211, 0.16);
+    --ink-alpha-20: rgba(236, 228, 211, 0.20);
+    --accent-listening: #4ec0b0;
+    --accent-thinking: #e2a35a;
+    --accent-speaking: #5dba8a;
+    --accent-error: #e07a64;
+    --accent-disconnected: #9aa0a4;
+    --shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+    --talk-button-text: #1a1f1f;
+    --debug-input-bg: rgba(20, 24, 26, 0.82);
+    --debug-log-bg: rgba(236, 228, 211, 0.05);
+    --ghost-button-bg: rgba(236, 228, 211, 0.08);
+    --ambient-left: rgba(78, 192, 176, 0.12);
+    --ambient-right: rgba(226, 163, 90, 0.12);
+    --avatar-face-top: rgba(50, 56, 56, 0.9);
+    --avatar-face-bottom: rgba(40, 46, 46, 0.9);
+  }
 }
 
 * {
@@ -26,8 +74,8 @@ body {
   margin: 0;
   color: var(--ink);
   background:
-    radial-gradient(circle at top left, rgba(29, 143, 130, 0.16), transparent 28%),
-    radial-gradient(circle at bottom right, rgba(196, 125, 44, 0.18), transparent 24%),
+    radial-gradient(circle at top left, var(--ambient-left), transparent 28%),
+    radial-gradient(circle at bottom right, var(--ambient-right), transparent 24%),
     linear-gradient(160deg, var(--bg), var(--bg-strong));
   font-family: "IBM Plex Sans", "Avenir Next", "Segoe UI", sans-serif;
 }
@@ -60,13 +108,13 @@ body {
 .ambient-left {
   top: 10%;
   left: 12%;
-  background: rgba(29, 143, 130, 0.18);
+  background: var(--ambient-left);
 }
 
 .ambient-right {
   right: 10%;
   bottom: 16%;
-  background: rgba(196, 125, 44, 0.18);
+  background: var(--ambient-right);
 }
 
 .avatar-card {
@@ -97,7 +145,7 @@ body {
   position: absolute;
   inset: 0.85rem;
   border-radius: 2rem;
-  border: 2px dashed rgba(29, 42, 42, 0.16);
+  border: 2px dashed var(--ink-alpha-16);
   transition: transform 400ms cubic-bezier(0.4, 0, 0.2, 1),
               border-color 400ms ease,
               opacity 400ms ease,
@@ -105,7 +153,7 @@ body {
 }
 
 body[data-state="idle"] .signal-ring {
-  border-color: rgba(29, 42, 42, 0.12);
+  border-color: var(--ink-alpha-12);
   animation: idle-pulse 4s ease-in-out infinite;
 }
 
@@ -178,18 +226,18 @@ body[data-state="disconnected"] .signal-ring {
   border: 6px solid var(--ink);
   border-radius: 2rem;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(246, 232, 205, 0.9)),
-    linear-gradient(90deg, rgba(29, 42, 42, 0.04) 1px, transparent 1px),
-    linear-gradient(rgba(29, 42, 42, 0.04) 1px, transparent 1px);
+    linear-gradient(180deg, var(--avatar-face-top), var(--avatar-face-bottom)),
+    linear-gradient(90deg, var(--ink-alpha-04) 1px, transparent 1px),
+    linear-gradient(var(--ink-alpha-04) 1px, transparent 1px);
   background-size: auto, 1.25rem 1.25rem, 1.25rem 1.25rem;
-  box-shadow: inset 0 -14px 0 rgba(29, 42, 42, 0.06);
+  box-shadow: inset 0 -14px 0 var(--ink-alpha-06);
 }
 
 .face-grid {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: linear-gradient(90deg, transparent 49.4%, rgba(29, 42, 42, 0.06) 49.6%, rgba(29, 42, 42, 0.06) 50.4%, transparent 50.6%);
+  background: linear-gradient(90deg, transparent 49.4%, var(--ink-alpha-06) 49.6%, var(--ink-alpha-06) 50.4%, transparent 50.6%);
 }
 
 /* ── Eyes ── */
@@ -207,7 +255,7 @@ body[data-state="disconnected"] .signal-ring {
   aspect-ratio: 1;
   border-radius: 999px;
   background: var(--ink);
-  box-shadow: 0 0 0 0.6rem rgba(29, 42, 42, 0.08);
+  box-shadow: 0 0 0 0.6rem var(--ink-alpha-08);
   transition: transform 250ms cubic-bezier(0.4, 0, 0.2, 1),
               border-radius 250ms cubic-bezier(0.4, 0, 0.2, 1),
               opacity 180ms ease;
@@ -363,9 +411,9 @@ body[data-mouth="round"] .mouth {
 .talk-button {
   padding: 0.95rem 1.4rem;
   min-width: 10rem;
-  color: #fefcf8;
+  color: var(--talk-button-text);
   background: var(--ink);
-  box-shadow: 0 12px 28px rgba(29, 42, 42, 0.2);
+  box-shadow: 0 12px 28px var(--ink-alpha-20);
   user-select: none;
   -webkit-user-select: none;
 }
@@ -404,7 +452,7 @@ body[data-mouth="round"] .mouth {
   padding: 1rem;
   border: 1px solid var(--line);
   border-radius: 1.25rem;
-  background: rgba(255, 255, 255, 0.42);
+  background: var(--debug-grid-bg);
 }
 
 .debug-field {
@@ -415,11 +463,11 @@ body[data-mouth="round"] .mouth {
 .debug-field input {
   width: 100%;
   padding: 0.85rem 1rem;
-  border: 1px solid rgba(29, 42, 42, 0.14);
+  border: 1px solid var(--ink-alpha-14);
   border-radius: 1rem;
   font: inherit;
   color: var(--ink);
-  background: rgba(255, 255, 255, 0.82);
+  background: var(--debug-input-bg);
 }
 
 .debug-sessions {
@@ -443,11 +491,11 @@ body[data-mouth="round"] .mouth {
 #sessions-list {
   width: 100%;
   padding: 0.6rem 0.85rem;
-  border: 1px solid rgba(29, 42, 42, 0.14);
+  border: 1px solid var(--ink-alpha-14);
   border-radius: 1rem;
   font: inherit;
   color: var(--ink);
-  background: rgba(255, 255, 255, 0.82);
+  background: var(--debug-input-bg);
 }
 
 #sessions-list {
@@ -465,7 +513,7 @@ body[data-mouth="round"] .mouth {
   justify-self: start;
   padding: 0.7rem 1rem;
   color: var(--ink);
-  background: rgba(29, 42, 42, 0.08);
+  background: var(--ghost-button-bg);
 }
 
 .debug-log {
@@ -475,7 +523,7 @@ body[data-mouth="round"] .mouth {
   overflow: auto;
   padding: 0.85rem;
   border-radius: 1rem;
-  background: rgba(29, 42, 42, 0.06);
+  background: var(--debug-log-bg);
   font-family: "IBM Plex Mono", "JetBrains Mono", monospace;
   white-space: pre-wrap;
 }
@@ -556,5 +604,10 @@ body[data-mouth="round"] .mouth {
 1.2rem;
     min-width: 8rem;
     font-size: 0.95rem;
+  }
+}
+
+}
+ 0.95rem;
   }
 }
