@@ -455,6 +455,35 @@ class TestOllamaCompleteImpl:
         assert result.voice_locale == "es-ES"
 
     @pytest.mark.asyncio
+    async def test_underlying_httpx_client_is_reused_across_turns(self):
+        """Mirror of the Hermes test. Until recently
+        OllamaProvider._complete_impl opened a fresh
+        httpx.AsyncClient per call, defeating the cache that
+        BaseProvider.get_client provides. The same client must
+        survive across turns and be reopened after aclose()."""
+        provider = OllamaProvider(_make_settings(), _logger())
+        with respx.mock(base_url="http://ollama.test:11434") as mock:
+            mock.post("/api/chat").respond(200, json=_ollama_body("a"))
+            mock.post("/api/chat").respond(200, json=_ollama_body("b"))
+            mock.post("/api/chat").respond(200, json=_ollama_body("c"))
+
+            await provider.complete_turn("hi", "es-ES", [])
+            first_client = provider._client
+            assert first_client is not None and not first_client.is_closed
+
+            await provider.complete_turn("hi", "es-ES", [])
+            assert provider._client is first_client, "expected cached client, got a new one"
+
+            await provider.aclose()
+            assert first_client.is_closed
+
+            # A subsequent turn must reopen rather than reuse the closed client.
+            await provider.complete_turn("hi", "es-ES", [])
+            assert provider._client is not None
+            assert not provider._client.is_closed
+            await provider.aclose()
+
+    @pytest.mark.asyncio
     async def test_empty_content_raises_protocol_error(self):
         provider = OllamaProvider(_make_settings(), _logger())
         with respx.mock(base_url="http://ollama.test:11434") as mock:

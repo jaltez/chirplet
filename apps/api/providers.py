@@ -351,12 +351,12 @@ class OllamaProvider(BaseProvider):
         )
 
         try:
-            async with httpx.AsyncClient(timeout=self.settings.ollama_timeout_seconds) as client:
-                response = await client.post(
-                    f"{self.settings.ollama_base_url}/api/chat",
-                    json=payload,
-                )
-                response.raise_for_status()
+            client = await self.get_client(self.settings.ollama_timeout_seconds)
+            response = await client.post(
+                f"{self.settings.ollama_base_url}/api/chat",
+                json=payload,
+            )
+            response.raise_for_status()
         except httpx.HTTPError as exc:
             self.logger.error("Ollama HTTP error: %s", exc)
             raise ProviderProtocolError(f"Ollama request failed: {exc}") from exc
