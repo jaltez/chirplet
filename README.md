@@ -51,11 +51,13 @@ available but returns a locale-aware fallback response.
 - `make test-cov` — runs with coverage; enforces a 100% floor
   via `--cov-fail-under=100`.
 - `make schema` — regenerates the JSON-Schema from Pydantic.
-- A GitHub Actions workflow (`.github/workflows/ci.yml`) runs on
-  every push to `main` and every PR: installs deps, installs
-  Playwright Chromium, verifies the JSON-Schema is in sync, then
-  runs `make test-cov` (which includes the SSE + interrupt
-  end-to-end test).
+- A GitHub Actions workflow (`.github/workflows/ci.yml`) defines
+  the full CI pipeline (lint, format-check, JSON-Schema sync,
+  `make test-cov`, Docker build + smoke test). It is **disabled
+  for push and pull_request events** — both jobs are gated
+  with `if: github.event_name == 'workflow_dispatch'`. To run
+  the pipeline manually: GitHub → Actions → CI → Run workflow.
+  To re-enable on push/PR, remove the `if` lines from both jobs.
 
 ## Docs
 

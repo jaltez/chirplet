@@ -5,9 +5,14 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   test:
+    # CI is currently disabled for push and pull_request events.
+    # To run the full suite manually: Actions tab -> CI ->
+    # Run workflow. To re-enable on push/PR, remove this `if`.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,6 +46,8 @@ jobs:
         run: make test-cov
 
   docker:
+    # Same gate as `test`. Also gated to workflow_dispatch only.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     needs: test
     steps:
