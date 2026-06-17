@@ -147,34 +147,48 @@ class TestTurnEndpoint:
         assert timing["completed_at"]
 
     @pytest.mark.asyncio
-    async def test_turn_provider_not_configured(self, client, mock_provider):
-        from apps.api.providers import ProviderConfigurationError
+    @pytest.mark.parametrize(
+        "error_message, locale, expected_text",
+        [
+            (
+                "mock not configured",
+                "en-GB",
+                "I can't reach the assistant right now. Please check your configuration.",
+            ),
+            (
+                "mock not configured",
+                "es-ES",
+                "No puedo conectar con el asistente. Revisa la configuración.",
+            ),
+            ("mock protocol error", "en-GB", "I cannot respond right now."),
+            ("mock protocol error", "es-ES", "No puedo responder en este momento."),
+        ],
+    )
+    async def test_turn_provider_error_returns_locale_aware_fallback(
+        self, client, mock_provider, error_message, locale, expected_text
+    ):
+        from apps.api.providers import (
+            ProviderConfigurationError,
+            ProviderProtocolError,
+        )
 
-        mock_provider.configured = False
+        exception_cls = (
+            ProviderConfigurationError
+            if "not configured" in error_message
+            else ProviderProtocolError
+        )
 
         async def raise_error(*args, **kwargs):
-            raise ProviderConfigurationError("mock not configured")
+            raise exception_cls(error_message)
 
         mock_provider.complete_turn = raise_error
 
-        res = await client.post("/api/turn", json={"transcript": "hello"})
+        res = await client.post("/api/turn", json={"transcript": "hello", "locale": locale})
         data = res.json()
         assert data["meta"]["fallback_used"] is True
-
-    @pytest.mark.asyncio
-    async def test_turn_provider_error(self, client, mock_provider):
-        from apps.api.providers import ProviderProtocolError
-
-        async def raise_error(*args, **kwargs):
-            raise ProviderProtocolError("mock protocol error")
-
-        mock_provider.complete_turn = raise_error
-
-        res = await client.post("/api/turn", json={"transcript": "hello", "locale": "en-GB"})
-        data = res.json()
-        assert data["meta"]["fallback_used"] is True
-        assert data["assistant"]["text"] == "I cannot respond right now."
-        assert data["meta"]["issue"] == "mock protocol error"
+        assert data["meta"]["issue"] == error_message
+        assert data["assistant"]["text"] == expected_text
+        assert data["assistant"]["voice_locale"] == locale
 
 
 class TestStreamEndpoint:
@@ -264,18 +278,44 @@ class TestStreamEndpoint:
         assert done_events[0]["session_id"] is not None
 
     @pytest.mark.asyncio
-    async def test_stream_provider_not_configured(self, client, mock_provider):
-        from apps.api.providers import ProviderConfigurationError
+    @pytest.mark.parametrize(
+        "error_message, locale, expected_text",
+        [
+            (
+                "not configured",
+                "en-GB",
+                "I can't reach the assistant right now. Please check your configuration.",
+            ),
+            (
+                "not configured",
+                "es-ES",
+                "No puedo conectar con el asistente. Revisa la configuración.",
+            ),
+            ("protocol error", "en-GB", "I cannot respond right now."),
+            ("protocol error", "es-ES", "No puedo responder en este momento."),
+        ],
+    )
+    async def test_stream_provider_error_emits_locale_aware_error_event(
+        self, client, mock_provider, error_message, locale, expected_text
+    ):
+        from apps.api.providers import (
+            ProviderConfigurationError,
+            ProviderProtocolError,
+        )
 
-        mock_provider.configured = False
+        exception_cls = (
+            ProviderConfigurationError
+            if "not configured" in error_message
+            else ProviderProtocolError
+        )
 
         async def raise_error(*args, **kwargs):
-            raise ProviderConfigurationError("not configured")
+            raise exception_cls(error_message)
             yield
 
         mock_provider.stream_turn = raise_error
 
-        res = await client.post("/api/turn/stream", json={"transcript": "hello"})
+        res = await client.post("/api/turn/stream", json={"transcript": "hello", "locale": locale})
         body = res.text
         events = []
         for line in body.split("\n"):
@@ -284,29 +324,9 @@ class TestStreamEndpoint:
 
         error_events = [e for e in events if e["type"] == "error"]
         assert len(error_events) == 1
+        assert error_events[0]["text"] == expected_text
+        assert error_events[0]["issue"] == error_message
         assert "session_id" in error_events[0]
-
-    @pytest.mark.asyncio
-    async def test_stream_provider_protocol_error(self, client, mock_provider):
-        from apps.api.providers import ProviderProtocolError
-
-        async def raise_error(*args, **kwargs):
-            raise ProviderProtocolError("protocol error")
-            yield
-
-        mock_provider.stream_turn = raise_error
-
-        res = await client.post("/api/turn/stream", json={"transcript": "hello", "locale": "en-GB"})
-        body = res.text
-        events = []
-        for line in body.split("\n"):
-            if line.startswith("data: "):
-                events.append(json.loads(line[6:]))
-
-        error_events = [e for e in events if e["type"] == "error"]
-        assert len(error_events) == 1
-        assert error_events[0]["text"] == "I cannot respond right now."
-        assert error_events[0]["issue"] == "protocol error"
 
     @pytest.mark.asyncio
     async def test_stream_saves_turn_on_done(self, client, mock_db):
