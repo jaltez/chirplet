@@ -25,6 +25,7 @@ const manualSend = document.querySelector("#manual-send")
 const voiceSelect = document.querySelector("#voice-select")
 const sessionsList = document.querySelector("#sessions-list")
 const sessionsRefresh = document.querySelector("#sessions-refresh")
+const sessionsNew = document.querySelector("#sessions-new")
 const sessionsTurns = document.querySelector("#sessions-turns")
 const debugLog = document.querySelector("#debug-log")
 
@@ -526,6 +527,20 @@ sessionsRefresh.addEventListener("click", loadSessions)
 sessionsList.addEventListener("change", () => {
   loadSessionTurns(sessionsList.value)
 })
+
+async function createNewSession() {
+  try {
+    const res = await fetch("/api/session", { method: "POST" })
+    if (!res.ok) throw new Error(`Request failed with ${res.status}`)
+    const payload = await res.json()
+    logDebug("Session", `created ${payload.session_id.slice(0, 8)}`)
+    await loadSessions()
+  } catch (e) {
+    logDebug("Session", e.message)
+  }
+}
+
+sessionsNew.addEventListener("click", createNewSession)
 
 if (window.speechSynthesis) {
   window.speechSynthesis.addEventListener("voiceschanged", populateVoiceList)

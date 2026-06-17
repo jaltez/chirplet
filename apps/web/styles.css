@@ -482,6 +482,11 @@ body[data-mouth="round"] .mouth {
   gap: 0.5rem;
 }
 
+.debug-sessions-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
 .debug-field-label {
   font-size: 0.95rem;
   color: var(--ink);
