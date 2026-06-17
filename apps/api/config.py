@@ -98,7 +98,9 @@ def get_settings() -> Settings:
         enable_session_memory=_read_bool("ENABLE_SESSION_MEMORY", True),
         session_turn_limit=max(1, int(os.getenv("SESSION_TURN_LIMIT", "8"))),
         session_ttl_minutes=max(1, int(os.getenv("SESSION_TTL_MINUTES", "60"))),
-        session_cleanup_interval_seconds=max(30, int(os.getenv("SESSION_CLEANUP_INTERVAL_SECONDS", "300"))),
+        session_cleanup_interval_seconds=max(
+            30, int(os.getenv("SESSION_CLEANUP_INTERVAL_SECONDS", "300"))
+        ),
         database_path=_resolve_db_path(os.getenv("DATABASE_PATH", "data/chirplet.db")),
         cors_origins=os.getenv("CORS_ORIGINS", "*"),
         system_prompt=os.getenv("HERMES_SYSTEM_PROMPT", DEFAULT_SYSTEM_PROMPT).strip(),

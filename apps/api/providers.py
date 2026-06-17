@@ -92,9 +92,13 @@ class BaseProvider(ABC):
             delta = assistant.text[len(streamed_text) :]
             if delta:  # pragma: no cover
                 yield {"type": "token", "text": delta}
-        yield {"type": "done", "expression": assistant.expression.model_dump(),
-               "voice_locale": assistant.voice_locale,
-               "action": assistant.action, "full_text": assistant.text}
+        yield {
+            "type": "done",
+            "expression": assistant.expression.model_dump(),
+            "voice_locale": assistant.voice_locale,
+            "action": assistant.action,
+            "full_text": assistant.text,
+        }
 
     @abstractmethod
     async def _complete_impl(
@@ -120,10 +124,12 @@ class BaseProvider(ABC):
             {"locale": locale, "transcript": transcript},
             ensure_ascii=False,
         )
-        messages.append({
-            "role": "user",
-            "content": user_payload,
-        })
+        messages.append(
+            {
+                "role": "user",
+                "content": user_payload,
+            }
+        )
         return messages
 
     def _parse_content(self, raw_content: str) -> AssistantPayload:
@@ -208,7 +214,9 @@ class BaseProvider(ABC):
 
             if escape_code == "u":
                 unicode_value = raw_value[index + 2 : index + 6]
-                if len(unicode_value) < 4 or not all(c in "0123456789abcdefABCDEF" for c in unicode_value):
+                if len(unicode_value) < 4 or not all(
+                    c in "0123456789abcdefABCDEF" for c in unicode_value
+                ):
                     break
                 decoded.append(chr(int(unicode_value, 16)))
                 index += 6
@@ -244,11 +252,15 @@ class HermesProvider(BaseProvider):
         if self.settings.hermes_api_key:
             headers["Authorization"] = f"Bearer {self.settings.hermes_api_key}"
 
-        self.logger.debug("Hermes request model=%s messages=%d", self.settings.hermes_model, len(messages))
+        self.logger.debug(
+            "Hermes request model=%s messages=%d", self.settings.hermes_model, len(messages)
+        )
 
         try:
             async with httpx.AsyncClient(timeout=self.settings.hermes_timeout_seconds) as client:
-                response = await client.post(self.settings.hermes_chat_url, headers=headers, json=payload)
+                response = await client.post(
+                    self.settings.hermes_chat_url, headers=headers, json=payload
+                )
                 response.raise_for_status()
         except httpx.HTTPError as exc:
             self.logger.error("Hermes HTTP error: %s", exc)
@@ -258,7 +270,11 @@ class HermesProvider(BaseProvider):
             body = response.json()
             content = body["choices"][0]["message"]["content"]
             if isinstance(content, list):
-                chunks = [item["text"] for item in content if item.get("type") == "text" and item.get("text")]
+                chunks = [
+                    item["text"]
+                    for item in content
+                    if item.get("type") == "text" and item.get("text")
+                ]
                 content = "".join(chunks) if chunks else ""
             if not isinstance(content, str) or not content:
                 raise ValueError("Empty or unsupported content format")
@@ -286,7 +302,9 @@ class HermesProvider(BaseProvider):
 
         try:
             async with httpx.AsyncClient(timeout=self.settings.hermes_timeout_seconds) as client:  # noqa: SIM117
-                async with client.stream("POST", self.settings.hermes_chat_url, headers=headers, json=payload) as response:
+                async with client.stream(
+                    "POST", self.settings.hermes_chat_url, headers=headers, json=payload
+                ) as response:
                     response.raise_for_status()
                     async for line in response.aiter_lines():
                         if not line.startswith("data: "):
@@ -328,7 +346,9 @@ class OllamaProvider(BaseProvider):
             "format": "json",
         }
 
-        self.logger.debug("Ollama request model=%s messages=%d", self.settings.ollama_model, len(messages))
+        self.logger.debug(
+            "Ollama request model=%s messages=%d", self.settings.ollama_model, len(messages)
+        )
 
         try:
             async with httpx.AsyncClient(timeout=self.settings.ollama_timeout_seconds) as client:
@@ -368,7 +388,9 @@ class OllamaProvider(BaseProvider):
 
         try:
             client = await self.get_client(self.settings.ollama_timeout_seconds)
-            async with client.stream("POST", f"{self.settings.ollama_base_url}/api/chat", json=payload) as response:
+            async with client.stream(
+                "POST", f"{self.settings.ollama_base_url}/api/chat", json=payload
+            ) as response:
                 response.raise_for_status()
                 async for line in response.aiter_lines():
                     if not line.strip():

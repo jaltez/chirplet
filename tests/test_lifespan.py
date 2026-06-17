@@ -8,6 +8,7 @@ These tests boot the app via lifespan_context and hit real routes
 through the real dependency-injection chain. They use a temp DB and
 short cleanup interval to keep things fast and isolated.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -33,6 +34,7 @@ def temp_env(monkeypatch, tmp_path: Path):
     # fixture in test_api.py handles the reset, but this file does not
     # import that conftest, so we clear it directly.
     from apps.api.config import get_settings
+
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()

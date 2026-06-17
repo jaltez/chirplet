@@ -1,4 +1,4 @@
-.PHONY: test test-cov schema lint clean
+.PHONY: test test-cov schema lint format format-check clean
 
 test:
 	.venv/bin/python -m pytest -q
@@ -11,3 +11,9 @@ schema:
 
 lint:
 	.venv/bin/ruff check apps tests tools
+
+format:
+	.venv/bin/ruff format apps tests tools
+
+format-check:
+	.venv/bin/ruff format --check apps tests tools

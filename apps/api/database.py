@@ -161,9 +161,7 @@ class Database:
         ]
 
     async def delete_session(self, session_id: str) -> bool:
-        cursor = await self.conn.execute(
-            "DELETE FROM sessions WHERE session_id = ?", (session_id,)
-        )
+        cursor = await self.conn.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
         await self.conn.commit()
         return cursor.rowcount > 0
 

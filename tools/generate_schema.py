@@ -8,6 +8,7 @@ Run from the repo root:
 The Pydantic model is the source of truth. Keeping the JSON-Schema file
 in sync is now a one-line command rather than a hand-edited document.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -35,7 +36,9 @@ def build_schema() -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--write", action="store_true", help="Overwrite the schema file instead of printing.")
+    parser.add_argument(
+        "--write", action="store_true", help="Overwrite the schema file instead of printing."
+    )
     args = parser.parse_args()
 
     rendered = json.dumps(build_schema(), indent=2, ensure_ascii=False) + "\n"

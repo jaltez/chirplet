@@ -12,6 +12,7 @@ submit a turn via the manual text input, wait for some tokens,
 click the talk button to trigger Interrupt, and assert the avatar
 returns to idle and the stream stops.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -70,6 +71,7 @@ class _SlowProvider:
 
     async def complete_turn(self, transcript, locale, history):
         from apps.api.contracts import AssistantPayload
+
         return AssistantPayload(
             text="hello world this is a slow stream",
             voice_locale=locale,
@@ -92,6 +94,7 @@ def temp_env(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("HERMES_MODEL", "gpt-x")
     monkeypatch.setenv("LOG_LEVEL", "WARNING")
     from apps.api.config import get_settings
+
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
@@ -132,6 +135,7 @@ def app_server(temp_env):
         # Wait for the server to be ready (up to 5s).
         import time
         import urllib.request
+
         for _ in range(50):
             try:
                 urllib.request.urlopen(f"http://127.0.0.1:{port}/api/health", timeout=0.1)
@@ -197,9 +201,7 @@ class TestSseStreaming:
 
         # Avatar should reach the speaking state once at least one
         # token has arrived.
-        expect(page.locator("body")).to_have_attribute(
-            "data-state", "speaking", timeout=5000
-        )
+        expect(page.locator("body")).to_have_attribute("data-state", "speaking", timeout=5000)
         page.close()
 
     def test_interrupt_stops_stream_and_resets_avatar(self, app_server):
@@ -213,9 +215,7 @@ class TestSseStreaming:
         page.locator("#manual-send").click()
 
         # Wait for the speaking state to begin.
-        expect(page.locator("body")).to_have_attribute(
-            "data-state", "speaking", timeout=5000
-        )
+        expect(page.locator("body")).to_have_attribute("data-state", "speaking", timeout=5000)
 
         # Capture the text length, then click the talk button to interrupt.
         # (Holding and releasing a real mouse would also work; a click
@@ -235,7 +235,6 @@ class TestSseStreaming:
         page.wait_for_timeout(500)
         text_final = page.locator("#spoken-text").text_content() or ""
         assert text_final == text_after, (
-            f"Stream continued after interrupt: "
-            f"before={text_after!r} after={text_final!r}"
+            f"Stream continued after interrupt: before={text_after!r} after={text_final!r}"
         )
         page.close()

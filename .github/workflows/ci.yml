@@ -29,6 +29,9 @@ jobs:
       - name: Lint
         run: make lint
 
+      - name: Format check
+        run: make format-check
+
       - name: Verify JSON-Schema is in sync
         run: |
           python tools/generate_schema.py > /tmp/regen.json

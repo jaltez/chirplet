@@ -10,6 +10,7 @@ from apps.api.contracts import AssistantPayload
 @pytest.fixture(autouse=True)
 def _clear_settings_cache():
     from apps.api.config import get_settings
+
     get_settings.cache_clear()
 
 
@@ -111,11 +112,14 @@ class TestSessionEndpoint:
 class TestTurnEndpoint:
     @pytest.mark.asyncio
     async def test_turn_success(self, client):
-        res = await client.post("/api/turn", json={
-            "session_id": "test-123",
-            "transcript": "hello",
-            "locale": "en-GB",
-        })
+        res = await client.post(
+            "/api/turn",
+            json={
+                "session_id": "test-123",
+                "transcript": "hello",
+                "locale": "en-GB",
+            },
+        )
         assert res.status_code == 200
         data = res.json()
         assert data["session_id"] == "test-123"
@@ -124,10 +128,13 @@ class TestTurnEndpoint:
 
     @pytest.mark.asyncio
     async def test_turn_creates_session_if_none(self, client):
-        res = await client.post("/api/turn", json={
-            "session_id": None,
-            "transcript": "hello",
-        })
+        res = await client.post(
+            "/api/turn",
+            json={
+                "session_id": None,
+                "transcript": "hello",
+            },
+        )
         assert res.status_code == 200
         assert res.json()["session_id"] is not None
 
@@ -142,6 +149,7 @@ class TestTurnEndpoint:
     @pytest.mark.asyncio
     async def test_turn_provider_not_configured(self, client, mock_provider):
         from apps.api.providers import ProviderConfigurationError
+
         mock_provider.configured = False
 
         async def raise_error(*args, **kwargs):
@@ -172,11 +180,14 @@ class TestTurnEndpoint:
 class TestStreamEndpoint:
     @pytest.mark.asyncio
     async def test_stream_success(self, client):
-        res = await client.post("/api/turn/stream", json={
-            "session_id": "stream-1",
-            "transcript": "hello stream",
-            "locale": "en-GB",
-        })
+        res = await client.post(
+            "/api/turn/stream",
+            json={
+                "session_id": "stream-1",
+                "transcript": "hello stream",
+                "locale": "en-GB",
+            },
+        )
         assert res.status_code == 200
         assert res.headers["content-type"] == "text/event-stream; charset=utf-8"
 
@@ -202,7 +213,9 @@ class TestStreamEndpoint:
             yield {"type": "token", "text": "lo"}
             yield {
                 "type": "done",
-                "expression": AssistantPayload(text="Hello", voice_locale=locale).expression.model_dump(),
+                "expression": AssistantPayload(
+                    text="Hello", voice_locale=locale
+                ).expression.model_dump(),
                 "voice_locale": locale,
                 "action": "idle",
                 "full_text": "Hello",
@@ -210,11 +223,14 @@ class TestStreamEndpoint:
 
         mock_provider.stream_turn = stream_turn
 
-        res = await client.post("/api/turn/stream", json={
-            "session_id": "stream-2",
-            "transcript": "hello",
-            "locale": "en-GB",
-        })
+        res = await client.post(
+            "/api/turn/stream",
+            json={
+                "session_id": "stream-2",
+                "transcript": "hello",
+                "locale": "en-GB",
+            },
+        )
         assert res.status_code == 200
 
         events = []
@@ -231,9 +247,12 @@ class TestStreamEndpoint:
 
     @pytest.mark.asyncio
     async def test_stream_creates_session(self, client):
-        res = await client.post("/api/turn/stream", json={
-            "transcript": "hello",
-        })
+        res = await client.post(
+            "/api/turn/stream",
+            json={
+                "transcript": "hello",
+            },
+        )
         body = res.text
         done_events = []
         for line in body.split("\n"):
@@ -247,6 +266,7 @@ class TestStreamEndpoint:
     @pytest.mark.asyncio
     async def test_stream_provider_not_configured(self, client, mock_provider):
         from apps.api.providers import ProviderConfigurationError
+
         mock_provider.configured = False
 
         async def raise_error(*args, **kwargs):
@@ -290,10 +310,13 @@ class TestStreamEndpoint:
 
     @pytest.mark.asyncio
     async def test_stream_saves_turn_on_done(self, client, mock_db):
-        await client.post("/api/turn/stream", json={
-            "session_id": "save-test",
-            "transcript": "hello",
-        })
+        await client.post(
+            "/api/turn/stream",
+            json={
+                "session_id": "save-test",
+                "transcript": "hello",
+            },
+        )
         mock_db.save_turn.assert_awaited_once()
         call_args = mock_db.save_turn.call_args
         assert call_args[0][0] == "save-test"
@@ -312,10 +335,13 @@ class TestIndexEndpoint:
 class TestCORS:
     @pytest.mark.asyncio
     async def test_cors_headers(self, client):
-        res = await client.options("/api/health", headers={
-            "Origin": "http://example.com",
-            "Access-Control-Request-Method": "GET",
-        })
+        res = await client.options(
+            "/api/health",
+            headers={
+                "Origin": "http://example.com",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
         assert res.status_code in (200, 204, 405)
 
 
@@ -350,16 +376,22 @@ class TestSessionListEndpoint:
     async def test_list_sessions_returns_summaries(self, client, mock_db):
         from apps.api.contracts import SessionSummary
 
-        mock_db.list_sessions = AsyncMock(return_value=[
-            SessionSummary(
-                session_id="s1", created_at="2025-01-01T00:00:00+00:00",
-                last_active_at="2025-01-01T00:01:00+00:00", turn_count=2,
-            ),
-            SessionSummary(
-                session_id="s2", created_at="2025-01-01T00:00:00+00:00",
-                last_active_at="2025-01-01T00:02:00+00:00", turn_count=0,
-            ),
-        ])
+        mock_db.list_sessions = AsyncMock(
+            return_value=[
+                SessionSummary(
+                    session_id="s1",
+                    created_at="2025-01-01T00:00:00+00:00",
+                    last_active_at="2025-01-01T00:01:00+00:00",
+                    turn_count=2,
+                ),
+                SessionSummary(
+                    session_id="s2",
+                    created_at="2025-01-01T00:00:00+00:00",
+                    last_active_at="2025-01-01T00:02:00+00:00",
+                    turn_count=0,
+                ),
+            ]
+        )
 
         res = await client.get("/api/sessions")
         assert res.status_code == 200
@@ -375,10 +407,14 @@ class TestGetSessionEndpoint:
     async def test_get_existing_session(self, client, mock_db):
         from apps.api.contracts import SessionSummary
 
-        mock_db.get_session = AsyncMock(return_value=SessionSummary(
-            session_id="abc", created_at="2025-01-01T00:00:00+00:00",
-            last_active_at="2025-01-01T00:05:00+00:00", turn_count=3,
-        ))
+        mock_db.get_session = AsyncMock(
+            return_value=SessionSummary(
+                session_id="abc",
+                created_at="2025-01-01T00:00:00+00:00",
+                last_active_at="2025-01-01T00:05:00+00:00",
+                turn_count=3,
+            )
+        )
 
         res = await client.get("/api/sessions/abc")
         assert res.status_code == 200
@@ -398,14 +434,27 @@ class TestGetSessionTurnsEndpoint:
     async def test_get_turns_for_existing_session(self, client, mock_db):
         from apps.api.contracts import SessionSummary, TurnRecord
 
-        mock_db.get_session = AsyncMock(return_value=SessionSummary(
-            session_id="abc", created_at="2025-01-01T00:00:00+00:00",
-            last_active_at="2025-01-01T00:05:00+00:00", turn_count=2,
-        ))
-        mock_db.get_turns = AsyncMock(return_value=[
-            TurnRecord(id=1, user="hi", assistant="hello", created_at="2025-01-01T00:01:00+00:00"),
-            TurnRecord(id=2, user="how are you", assistant="good", created_at="2025-01-01T00:02:00+00:00"),
-        ])
+        mock_db.get_session = AsyncMock(
+            return_value=SessionSummary(
+                session_id="abc",
+                created_at="2025-01-01T00:00:00+00:00",
+                last_active_at="2025-01-01T00:05:00+00:00",
+                turn_count=2,
+            )
+        )
+        mock_db.get_turns = AsyncMock(
+            return_value=[
+                TurnRecord(
+                    id=1, user="hi", assistant="hello", created_at="2025-01-01T00:01:00+00:00"
+                ),
+                TurnRecord(
+                    id=2,
+                    user="how are you",
+                    assistant="good",
+                    created_at="2025-01-01T00:02:00+00:00",
+                ),
+            ]
+        )
 
         res = await client.get("/api/sessions/abc/turns")
         assert res.status_code == 200
@@ -425,10 +474,14 @@ class TestGetSessionTurnsEndpoint:
     async def test_get_turns_for_existing_session_with_no_turns(self, client, mock_db):
         from apps.api.contracts import SessionSummary
 
-        mock_db.get_session = AsyncMock(return_value=SessionSummary(
-            session_id="empty", created_at="2025-01-01T00:00:00+00:00",
-            last_active_at="2025-01-01T00:00:00+00:00", turn_count=0,
-        ))
+        mock_db.get_session = AsyncMock(
+            return_value=SessionSummary(
+                session_id="empty",
+                created_at="2025-01-01T00:00:00+00:00",
+                last_active_at="2025-01-01T00:00:00+00:00",
+                turn_count=0,
+            )
+        )
 
         res = await client.get("/api/sessions/empty/turns")
         assert res.status_code == 200

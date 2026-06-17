@@ -22,15 +22,27 @@ from apps.api.providers import (
 
 def _make_settings(**overrides) -> Settings:
     defaults = dict(
-        app_name="test", app_env="test", app_host="0", app_port=0,
-        log_level="INFO", llm_provider="hermes", llm_temperature=0.4,
-        hermes_base_url="http://x/v1", hermes_api_key=None, hermes_model="gpt",
-        hermes_timeout_seconds=30, hermes_response_format="none",
-        ollama_base_url="http://localhost:11434", ollama_model="llama3.2",
+        app_name="test",
+        app_env="test",
+        app_host="0",
+        app_port=0,
+        log_level="INFO",
+        llm_provider="hermes",
+        llm_temperature=0.4,
+        hermes_base_url="http://x/v1",
+        hermes_api_key=None,
+        hermes_model="gpt",
+        hermes_timeout_seconds=30,
+        hermes_response_format="none",
+        ollama_base_url="http://localhost:11434",
+        ollama_model="llama3.2",
         ollama_timeout_seconds=30,
-        enable_session_memory=True, session_turn_limit=8,
-        session_ttl_minutes=60, session_cleanup_interval_seconds=300,
-        database_path=Path("db"), cors_origins="*",
+        enable_session_memory=True,
+        session_turn_limit=8,
+        session_ttl_minutes=60,
+        session_cleanup_interval_seconds=300,
+        database_path=Path("db"),
+        cors_origins="*",
         system_prompt='Respond with JSON: {"text":"..."}',
     )
     defaults.update(overrides)
@@ -87,7 +99,9 @@ class TestBaseProvider:
 
     def test_parse_content_simple_json(self):
         p = HermesProvider(_make_settings(), _logger())
-        result = p._parse_content('{"text":"Hello","expression":{"state":"speaking","mood":"friendly","mouth":"smile"}}')
+        result = p._parse_content(
+            '{"text":"Hello","expression":{"state":"speaking","mood":"friendly","mouth":"smile"}}'
+        )
         assert result.text == "Hello"
         assert result.expression.state == AvatarState.SPEAKING
 
@@ -130,7 +144,8 @@ class TestBaseProvider:
             return True
 
         events = [
-            event async for event in provider.stream_turn(
+            event
+            async for event in provider.stream_turn(
                 "hello",
                 "en-GB",
                 [],
@@ -156,7 +171,7 @@ class TestBaseProvider:
 
             async def _stream_impl(self, transcript, locale, history) -> AsyncGenerator[str, None]:
                 yield '{"text":"Hel'
-                yield 'lo'
+                yield "lo"
                 yield ' there","expression":{"state":"speaking","mood":"friendly","mouth":"smile"},"action":"idle","voice_locale":"en-GB"}'
 
         provider = StreamingProbeProvider(_make_settings(), _logger())
@@ -219,8 +234,10 @@ class TestOllamaProvider:
         """Locale is backfilled when provider returns empty voice_locale."""
         p = OllamaProvider(_make_settings(), _logger())
         payload = AssistantPayload(text="Hi", voice_locale="")
+
         async def mock_impl(transcript, locale, history):
             return payload
+
         monkeypatch.setattr(p, "_complete_impl", mock_impl)
         result = await p.complete_turn("hello", "en-GB", [])
         assert result.voice_locale == "en-GB"
@@ -249,7 +266,7 @@ class TestCreateProvider:
 _TEXT_SAMPLES = [
     "hello",
     "",
-    "a string with \"quotes\" and \\backslashes\\",
+    'a string with "quotes" and \\backslashes\\',
     "acentos: ñáéíóú",
     "newline\nand\ttab",
     "unicode \u2603 snowman",
@@ -263,7 +280,10 @@ _NOISE_SUFFIXES = ["", "\n", "\n```", " hope that helps!", "  \n\t"]
 
 def _build_object(text: str) -> str:
     """Build a complete JSON object string from a raw Python text value."""
-    payload = {"text": text, "expression": {"state": "speaking", "mood": "friendly", "mouth": "open"}}
+    payload = {
+        "text": text,
+        "expression": {"state": "speaking", "mood": "friendly", "mouth": "open"},
+    }
     return json.dumps(payload, ensure_ascii=False)
 
 
@@ -289,9 +309,7 @@ class TestExtractTextPreviewProperties:
                     f"prev={previous!r} new={preview!r} text={text!r}"
                 )
                 previous = preview
-            assert previous == text, (
-                f"Final preview mismatch: got {previous!r}, expected {text!r}"
-            )
+            assert previous == text, f"Final preview mismatch: got {previous!r}, expected {text!r}"
 
     def test_final_preview_matches_decoded_text(self):
         from hypothesis import given, settings
@@ -355,4 +373,3 @@ class TestExtractTextPreviewProperties:
             assert previous == text
 
         prop()
-

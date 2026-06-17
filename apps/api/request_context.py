@@ -2,9 +2,7 @@ import contextvars
 import logging
 import uuid
 
-request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar(
-    "request_id", default="-"
-)
+request_id_var: contextvars.ContextVar[str] = contextvars.ContextVar("request_id", default="-")
 
 
 def new_request_id() -> str:

@@ -68,8 +68,12 @@ async def lifespan(app: FastAPI):
 
     Path(db.path).parent.mkdir(parents=True, exist_ok=True)
     await db.connect()
-    logger.info("Chirplet starting env=%s provider=%s configured=%s",
-                settings.app_env, provider.provider_name, provider.configured)
+    logger.info(
+        "Chirplet starting env=%s provider=%s configured=%s",
+        settings.app_env,
+        provider.provider_name,
+        provider.configured,
+    )
     cleanup_task = asyncio.create_task(_cleanup_sessions_periodically(app))
     yield
     cleanup_task.cancel()
@@ -139,7 +143,9 @@ _FALLBACK_TEXT = {
 }
 
 
-def _fallback_response(locale: str, state: AvatarState, default_text: str | None = None) -> AssistantPayload:
+def _fallback_response(
+    locale: str, state: AvatarState, default_text: str | None = None
+) -> AssistantPayload:
     mood = AvatarMood.CONCERNED if state != AvatarState.IDLE else AvatarMood.NEUTRAL
     lang_prefix = (locale or "").split("-", 1)[0].lower()
     text = (
@@ -184,9 +190,7 @@ async def list_sessions(db: Database = Depends(get_db)) -> SessionListResponse:
 
 
 @app.get("/api/sessions/{session_id}", response_model=SessionSummary)
-async def get_session(
-    session_id: str, db: Database = Depends(get_db)
-) -> SessionSummary:
+async def get_session(session_id: str, db: Database = Depends(get_db)) -> SessionSummary:
     summary = await db.get_session(session_id)
     if summary is None:
         raise HTTPException(status_code=404, detail="Session not found")
@@ -194,14 +198,10 @@ async def get_session(
 
 
 @app.get("/api/sessions/{session_id}/turns", response_model=HistoryResponse)
-async def get_session_turns(
-    session_id: str, db: Database = Depends(get_db)
-) -> HistoryResponse:
+async def get_session_turns(session_id: str, db: Database = Depends(get_db)) -> HistoryResponse:
     if await db.get_session(session_id) is None:
         raise HTTPException(status_code=404, detail="Session not found")
-    return HistoryResponse(
-        session_id=session_id, turns=await db.get_turns(session_id)
-    )
+    return HistoryResponse(session_id=session_id, turns=await db.get_turns(session_id))
 
 
 @app.delete("/api/sessions/{session_id}", status_code=204)
@@ -231,8 +231,7 @@ async def create_turn(
             history=history,
         )
         await db.save_turn(session_id, request.transcript, assistant.text)
-        logger.info("Turn completed session=%s provider=%s",
-                     session_id[:8], provider.provider_name)
+        logger.info("Turn completed session=%s provider=%s", session_id[:8], provider.provider_name)
     except ProviderConfigurationError as exc:
         logger.warning("Provider not configured: %s", exc)
         assistant = _fallback_response(
@@ -250,8 +249,13 @@ async def create_turn(
 
     completed_at = _now_iso()
     duration_ms = int((perf_counter() - started_perf) * 1000)
-    logger.info("Turn finished session=%s provider=%s fallback=%s duration_ms=%d",
-                session_id, provider.provider_name, meta.fallback_used, duration_ms)
+    logger.info(
+        "Turn finished session=%s provider=%s fallback=%s duration_ms=%d",
+        session_id,
+        provider.provider_name,
+        meta.fallback_used,
+        duration_ms,
+    )
 
     return ConversationTurnResponse(
         session_id=session_id,
@@ -289,14 +293,16 @@ async def create_turn_stream(
                     yield f"data: {json.dumps({'type': 'token', 'text': event['text']})}\n\n"
                 elif event["type"] == "done":
                     await db.save_turn(session_id, turn_request.transcript, event["full_text"])
-                    done_data = json.dumps({
-                        "type": "done",
-                        "session_id": session_id,
-                        "text": event["full_text"],
-                        "expression": event["expression"],
-                        "voice_locale": event["voice_locale"],
-                        "action": event["action"],
-                    })
+                    done_data = json.dumps(
+                        {
+                            "type": "done",
+                            "session_id": session_id,
+                            "text": event["full_text"],
+                            "expression": event["expression"],
+                            "voice_locale": event["voice_locale"],
+                            "action": event["action"],
+                        }
+                    )
                     yield f"data: {done_data}\n\n"
                     logger.info("Stream turn finished session=%s", session_id[:8])
         except ProviderConfigurationError as exc:

@@ -5,6 +5,7 @@ exercises the real httpx branches. These tests use respx to mock the
 network transport so the real provider code runs end-to-end, asserting
 on request shape, response parsing, error mapping, and stream chunking.
 """
+
 from __future__ import annotations
 
 import json
@@ -29,16 +30,27 @@ from apps.api.providers import (
 
 def _make_settings(**overrides) -> Settings:
     defaults = dict(
-        app_name="test", app_env="test", app_host="0", app_port=0,
-        log_level="INFO", llm_provider="hermes", llm_temperature=0.4,
-        hermes_base_url="http://hermes.test/v1", hermes_api_key=None,
-        hermes_model="gpt-x", hermes_timeout_seconds=5,
+        app_name="test",
+        app_env="test",
+        app_host="0",
+        app_port=0,
+        log_level="INFO",
+        llm_provider="hermes",
+        llm_temperature=0.4,
+        hermes_base_url="http://hermes.test/v1",
+        hermes_api_key=None,
+        hermes_model="gpt-x",
+        hermes_timeout_seconds=5,
         hermes_response_format="none",
-        ollama_base_url="http://ollama.test:11434", ollama_model="llama3.2",
+        ollama_base_url="http://ollama.test:11434",
+        ollama_model="llama3.2",
         ollama_timeout_seconds=5,
-        enable_session_memory=False, session_turn_limit=8,
-        session_ttl_minutes=60, session_cleanup_interval_seconds=300,
-        database_path=Path("db"), cors_origins="*",
+        enable_session_memory=False,
+        session_turn_limit=8,
+        session_ttl_minutes=60,
+        session_cleanup_interval_seconds=300,
+        database_path=Path("db"),
+        cors_origins="*",
         system_prompt='Respond with JSON: {"text":"..."}',
     )
     defaults.update(overrides)
@@ -51,47 +63,56 @@ def _logger():
 
 def _simple_body(text: str = "Hello there") -> dict[str, Any]:
     return {
-        "choices": [{
-            "message": {
-                "content": json.dumps({
-                    "text": text,
-                    "expression": {
-                        "state": "speaking",
-                        "mood": "friendly",
-                        "mouth": "smile",
-                    },
-                    "action": "idle",
-                    "voice_locale": "en-GB",
-                }),
-            },
-        }],
+        "choices": [
+            {
+                "message": {
+                    "content": json.dumps(
+                        {
+                            "text": text,
+                            "expression": {
+                                "state": "speaking",
+                                "mood": "friendly",
+                                "mouth": "smile",
+                            },
+                            "action": "idle",
+                            "voice_locale": "en-GB",
+                        }
+                    ),
+                },
+            }
+        ],
     }
 
 
 def _list_content_body(text: str) -> dict[str, Any]:
-    full_json = json.dumps({
-        "text": text,
-        "expression": {"state": "speaking", "mood": "friendly", "mouth": "smile"},
-        "action": "idle",
-        "voice_locale": "en-GB",
-    })
+    full_json = json.dumps(
+        {
+            "text": text,
+            "expression": {"state": "speaking", "mood": "friendly", "mouth": "smile"},
+            "action": "idle",
+            "voice_locale": "en-GB",
+        }
+    )
     mid = len(full_json) // 2
     return {
-        "choices": [{
-            "message": {
-                "content": [
-                    {"type": "text", "text": full_json[:mid]},
-                    {"type": "text", "text": full_json[mid:]},
-                    {"type": "ignored", "foo": "bar"},
-                ],
-            },
-        }],
+        "choices": [
+            {
+                "message": {
+                    "content": [
+                        {"type": "text", "text": full_json[:mid]},
+                        {"type": "text", "text": full_json[mid:]},
+                        {"type": "ignored", "foo": "bar"},
+                    ],
+                },
+            }
+        ],
     }
 
 
 # ---------------------------------------------------------------------------
 # HermesProvider: _complete_impl
 # ---------------------------------------------------------------------------
+
 
 class TestHermesCompleteImpl:
     @pytest.mark.asyncio
@@ -152,7 +173,9 @@ class TestHermesCompleteImpl:
     async def test_empty_content_raises_protocol_error(self):
         provider = HermesProvider(_make_settings(), _logger())
         with respx.mock(base_url="http://hermes.test") as mock:
-            mock.post("/v1/chat/completions").respond(200, json={"choices": [{"message": {"content": ""}}]})
+            mock.post("/v1/chat/completions").respond(
+                200, json={"choices": [{"message": {"content": ""}}]}
+            )
             with pytest.raises(ProviderProtocolError, match="Hermes response structure unexpected"):
                 await provider.complete_turn("hello", "en-GB", [])
 
@@ -185,6 +208,7 @@ class TestHermesCompleteImpl:
 # HermesProvider: _stream_impl
 # ---------------------------------------------------------------------------
 
+
 def _sse_line(payload: dict[str, Any]) -> str:
     return f"data: {json.dumps(payload)}\n\n"
 
@@ -200,12 +224,14 @@ class TestHermesStreamImpl:
         # The LLM emits the full JSON object split across deltas, per the
         # system prompt. Reassembling all delta.content values yields the
         # complete payload.
-        full_json = json.dumps({
-            "text": "Hello",
-            "expression": {"state": "speaking", "mood": "friendly", "mouth": "smile"},
-            "action": "idle",
-            "voice_locale": "en-GB",
-        })
+        full_json = json.dumps(
+            {
+                "text": "Hello",
+                "expression": {"state": "speaking", "mood": "friendly", "mouth": "smile"},
+                "action": "idle",
+                "voice_locale": "en-GB",
+            }
+        )
         sse_body = (
             _sse_line({"choices": [{"delta": {"content": full_json[:20]}}]})
             + _sse_line({"choices": [{"delta": {"content": full_json[20:40]}}]})
@@ -236,7 +262,14 @@ class TestHermesStreamImpl:
     @pytest.mark.asyncio
     async def test_skips_non_data_lines(self):
         provider = HermesProvider(_make_settings(), _logger())
-        full_json = json.dumps({"text": "Hi", "expression": {"state": "speaking", "mood": "friendly", "mouth": "smile"}, "action": "idle", "voice_locale": "en-GB"})
+        full_json = json.dumps(
+            {
+                "text": "Hi",
+                "expression": {"state": "speaking", "mood": "friendly", "mouth": "smile"},
+                "action": "idle",
+                "voice_locale": "en-GB",
+            }
+        )
         sse_body = (
             "event: ping\n\n"
             ": comment line\n\n"
@@ -256,11 +289,18 @@ class TestHermesStreamImpl:
     @pytest.mark.asyncio
     async def test_skips_malformed_chunks_silently(self):
         provider = HermesProvider(_make_settings(), _logger())
-        full_json = json.dumps({"text": "ok", "expression": {"state": "speaking", "mood": "friendly", "mouth": "smile"}, "action": "idle", "voice_locale": "en-GB"})
+        full_json = json.dumps(
+            {
+                "text": "ok",
+                "expression": {"state": "speaking", "mood": "friendly", "mouth": "smile"},
+                "action": "idle",
+                "voice_locale": "en-GB",
+            }
+        )
         sse_body = (
             "data: not-json\n\n"
             + _sse_line({"choices": [{"delta": {"content": full_json}}]})
-            + "data: {\"choices\":[]}\n\n"
+            + 'data: {"choices":[]}\n\n'
             + _sse_done()
         )
         with respx.mock(base_url="http://hermes.test") as mock:
@@ -276,7 +316,14 @@ class TestHermesStreamImpl:
     @pytest.mark.asyncio
     async def test_cancel_stops_iteration(self):
         provider = HermesProvider(_make_settings(), _logger())
-        full_json = json.dumps({"text": "Hello", "expression": {"state": "speaking", "mood": "friendly", "mouth": "smile"}, "action": "idle", "voice_locale": "en-GB"})
+        full_json = json.dumps(
+            {
+                "text": "Hello",
+                "expression": {"state": "speaking", "mood": "friendly", "mouth": "smile"},
+                "action": "idle",
+                "voice_locale": "en-GB",
+            }
+        )
         sse_body = (
             _sse_line({"choices": [{"delta": {"content": full_json[:1]}}]})
             + _sse_line({"choices": [{"delta": {"content": full_json[1:]}}]})
@@ -293,9 +340,15 @@ class TestHermesStreamImpl:
                 cancel_after["calls"] += 1
                 return cancel_after["calls"] > 1
 
-            events = [event async for event in provider.stream_turn(
-                "hello", "en-GB", [], should_cancel=should_cancel,
-            )]
+            events = [
+                event
+                async for event in provider.stream_turn(
+                    "hello",
+                    "en-GB",
+                    [],
+                    should_cancel=should_cancel,
+                )
+            ]
 
         # Cancellation after the first chunk should suppress both further
         # tokens and the done event.
@@ -315,12 +368,14 @@ class TestHermesStreamImpl:
     async def test_sends_authorization_header_when_api_key_set(self):
         s = _make_settings(hermes_api_key="sk-stream-test")
         provider = HermesProvider(s, _logger())
-        full_json = json.dumps({
-            "text": "hi",
-            "expression": {"state": "speaking", "mood": "friendly", "mouth": "smile"},
-            "action": "idle",
-            "voice_locale": "en-GB",
-        })
+        full_json = json.dumps(
+            {
+                "text": "hi",
+                "expression": {"state": "speaking", "mood": "friendly", "mouth": "smile"},
+                "action": "idle",
+                "voice_locale": "en-GB",
+            }
+        )
         sse_body = _sse_line({"choices": [{"delta": {"content": full_json}}]}) + _sse_done()
         with respx.mock(base_url="http://hermes.test") as mock:
             route = mock.post("/v1/chat/completions").respond(
@@ -336,15 +391,18 @@ class TestHermesStreamImpl:
 # OllamaProvider: _complete_impl
 # ---------------------------------------------------------------------------
 
+
 def _ollama_body(text: str = "ola") -> dict[str, Any]:
     return {
         "message": {
-            "content": json.dumps({
-                "text": text,
-                "expression": {"state": "speaking", "mood": "friendly", "mouth": "smile"},
-                "action": "idle",
-                "voice_locale": "es-ES",
-            }),
+            "content": json.dumps(
+                {
+                    "text": text,
+                    "expression": {"state": "speaking", "mood": "friendly", "mouth": "smile"},
+                    "action": "idle",
+                    "voice_locale": "es-ES",
+                }
+            ),
         },
     }
 
@@ -394,19 +452,26 @@ class TestOllamaCompleteImpl:
 # OllamaProvider: _stream_impl
 # ---------------------------------------------------------------------------
 
+
 def _ollama_ndjson_line(text: str, done: bool = False) -> str:
     return json.dumps({"message": {"content": text}, "done": done}) + "\n"
 
 
 def _ollama_full_payload_chunks(text: str) -> str:
-    full_json = json.dumps({
-        "text": text,
-        "expression": {"state": "speaking", "mood": "friendly", "mouth": "smile"},
-        "action": "idle",
-        "voice_locale": "es-ES",
-    })
+    full_json = json.dumps(
+        {
+            "text": text,
+            "expression": {"state": "speaking", "mood": "friendly", "mouth": "smile"},
+            "action": "idle",
+            "voice_locale": "es-ES",
+        }
+    )
     mid = len(full_json) // 2
-    return _ollama_ndjson_line(full_json[:mid]) + _ollama_ndjson_line(full_json[mid:]) + _ollama_ndjson_line("", done=True)
+    return (
+        _ollama_ndjson_line(full_json[:mid])
+        + _ollama_ndjson_line(full_json[mid:])
+        + _ollama_ndjson_line("", done=True)
+    )
 
 
 class TestOllamaStreamImpl:
@@ -415,7 +480,8 @@ class TestOllamaStreamImpl:
         provider = OllamaProvider(_make_settings(), _logger())
         with respx.mock(base_url="http://ollama.test:11434") as mock:
             route = mock.post("/api/chat").respond(
-                200, content=_ollama_full_payload_chunks("Hola"),
+                200,
+                content=_ollama_full_payload_chunks("Hola"),
                 headers={"content-type": "application/x-ndjson"},
             )
             events = [event async for event in provider.stream_turn("hello", "es-ES", [])]
@@ -433,8 +499,17 @@ class TestOllamaStreamImpl:
     @pytest.mark.asyncio
     async def test_skips_malformed_lines(self):
         provider = OllamaProvider(_make_settings(), _logger())
-        full_json = json.dumps({"text": "ok", "expression": {"state": "speaking", "mood": "friendly", "mouth": "smile"}, "action": "idle", "voice_locale": "es-ES"})
-        ndjson_body = "not json\n" + _ollama_ndjson_line(full_json) + _ollama_ndjson_line("", done=True)
+        full_json = json.dumps(
+            {
+                "text": "ok",
+                "expression": {"state": "speaking", "mood": "friendly", "mouth": "smile"},
+                "action": "idle",
+                "voice_locale": "es-ES",
+            }
+        )
+        ndjson_body = (
+            "not json\n" + _ollama_ndjson_line(full_json) + _ollama_ndjson_line("", done=True)
+        )
         with respx.mock(base_url="http://ollama.test:11434") as mock:
             mock.post("/api/chat").respond(200, content=ndjson_body)
             events = [event async for event in provider.stream_turn("hello", "es-ES", [])]
@@ -446,8 +521,17 @@ class TestOllamaStreamImpl:
     @pytest.mark.asyncio
     async def test_skips_blank_lines(self):
         provider = OllamaProvider(_make_settings(), _logger())
-        full_json = json.dumps({"text": "ok", "expression": {"state": "speaking", "mood": "friendly", "mouth": "smile"}, "action": "idle", "voice_locale": "es-ES"})
-        ndjson_body = "\n\n" + _ollama_ndjson_line(full_json) + "\n\n" + _ollama_ndjson_line("", done=True)
+        full_json = json.dumps(
+            {
+                "text": "ok",
+                "expression": {"state": "speaking", "mood": "friendly", "mouth": "smile"},
+                "action": "idle",
+                "voice_locale": "es-ES",
+            }
+        )
+        ndjson_body = (
+            "\n\n" + _ollama_ndjson_line(full_json) + "\n\n" + _ollama_ndjson_line("", done=True)
+        )
         with respx.mock(base_url="http://ollama.test:11434") as mock:
             mock.post("/api/chat").respond(200, content=ndjson_body)
             events = [event async for event in provider.stream_turn("hello", "es-ES", [])]

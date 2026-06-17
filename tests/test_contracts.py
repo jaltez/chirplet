@@ -37,7 +37,9 @@ class TestAvatarExpression:
         assert expr.mouth == MouthCue.SMILE
 
     def test_explicit_values(self):
-        expr = AvatarExpression(state=AvatarState.LISTENING, mood=AvatarMood.CURIOUS, mouth=MouthCue.OPEN)
+        expr = AvatarExpression(
+            state=AvatarState.LISTENING, mood=AvatarMood.CURIOUS, mouth=MouthCue.OPEN
+        )
         assert expr.state == AvatarState.LISTENING
         assert expr.mood == AvatarMood.CURIOUS
         assert expr.mouth == MouthCue.OPEN
@@ -65,7 +67,9 @@ class TestAssistantPayload:
     def test_full_model(self):
         payload = AssistantPayload(
             text="Hola",
-            expression=AvatarExpression(state=AvatarState.IDLE, mood=AvatarMood.CALM, mouth=MouthCue.CLOSED),
+            expression=AvatarExpression(
+                state=AvatarState.IDLE, mood=AvatarMood.CALM, mouth=MouthCue.CLOSED
+            ),
             action="wave",
             voice_locale="en-GB",
         )
@@ -91,7 +95,9 @@ class TestConversationTurnRequest:
 
 class TestHealthResponse:
     def test_structure(self):
-        resp = HealthResponse(status="ok", provider="ollama", provider_configured=True, session_memory=True)
+        resp = HealthResponse(
+            status="ok", provider="ollama", provider_configured=True, session_memory=True
+        )
         data = resp.model_dump()
         assert data["provider"] == "ollama"
         assert "hermes_configured" not in data
@@ -99,7 +105,11 @@ class TestHealthResponse:
 
 class TestTimingMetrics:
     def test_valid(self):
-        tm = TimingMetrics(request_started_at="2024-01-01T00:00:00", completed_at="2024-01-01T00:00:01", duration_ms=1000)
+        tm = TimingMetrics(
+            request_started_at="2024-01-01T00:00:00",
+            completed_at="2024-01-01T00:00:01",
+            duration_ms=1000,
+        )
         assert tm.duration_ms == 1000
 
     def test_negative_duration_raises(self):
