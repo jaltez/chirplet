@@ -36,3 +36,61 @@ jobs:
 
       - name: Run tests with 100% coverage floor
         run: make test-cov
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up dummy .env for the smoke test
+        run: |
+          mkdir -p data
+          cat > .env <<'EOF'
+          APP_ENV=ci
+          APP_HOST=0.0.0.0
+          APP_PORT=8000
+          LOG_LEVEL=WARNING
+          LLM_PROVIDER=hermes
+          HERMES_BASE_URL=http://x/v1
+          HERMES_MODEL=ci-smoke-test
+          DATABASE_PATH=data/chirplet.db
+          CORS_ORIGINS=*
+          EOF
+
+      - name: Build the image
+        run: docker build -t chirplet:ci .
+
+      - name: Start the container
+        run: |
+          docker compose up -d
+          # Give uvicorn a moment to bind.
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if curl -sf http://127.0.0.1:8000/api/health > /dev/null; then
+              break
+            fi
+            sleep 1
+          done
+
+      - name: Smoke test /api/health
+        run: |
+          # /api/health must return 200 and a JSON body with
+          # provider_configured=true (HERMES_BASE_URL and HERMES_MODEL
+          # are set in the .env above).
+          body=$(curl -sf http://127.0.0.1:8000/api/health)
+          echo "health response: $body"
+          echo "$body" | python -c "import json,sys; d=json.load(sys.stdin); assert d['status']=='ok'; assert d['provider_configured'] is True; assert d['provider']=='hermes'"
+
+      - name: Smoke test /api/session
+        run: |
+          body=$(curl -sf -X POST http://127.0.0.1:8000/api/session)
+          echo "session response: $body"
+          echo "$body" | python -c "import json,sys; d=json.load(sys.stdin); assert 'session_id' in d and len(d['session_id']) > 0"
+
+      - name: Show container logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Stop the container
+        if: always()
+        run: docker compose down -v
