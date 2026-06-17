@@ -257,11 +257,11 @@ class HermesProvider(BaseProvider):
         )
 
         try:
-            async with httpx.AsyncClient(timeout=self.settings.hermes_timeout_seconds) as client:
-                response = await client.post(
-                    self.settings.hermes_chat_url, headers=headers, json=payload
-                )
-                response.raise_for_status()
+            client = await self.get_client(self.settings.hermes_timeout_seconds)
+            response = await client.post(
+                self.settings.hermes_chat_url, headers=headers, json=payload
+            )
+            response.raise_for_status()
         except httpx.HTTPError as exc:
             self.logger.error("Hermes HTTP error: %s", exc)
             raise ProviderProtocolError(f"Hermes request failed: {exc}") from exc
@@ -301,25 +301,25 @@ class HermesProvider(BaseProvider):
         self.logger.debug("Hermes stream request model=%s", self.settings.hermes_model)
 
         try:
-            async with httpx.AsyncClient(timeout=self.settings.hermes_timeout_seconds) as client:  # noqa: SIM117
-                async with client.stream(
-                    "POST", self.settings.hermes_chat_url, headers=headers, json=payload
-                ) as response:
-                    response.raise_for_status()
-                    async for line in response.aiter_lines():
-                        if not line.startswith("data: "):
-                            continue
-                        data = line[6:].strip()
-                        if data == "[DONE]":
-                            break
-                        try:
-                            chunk = json.loads(data)
-                            delta = chunk["choices"][0].get("delta", {})
-                            content = delta.get("content", "")
-                            if content:
-                                yield content
-                        except (json.JSONDecodeError, KeyError, IndexError):
-                            continue
+            client = await self.get_client(self.settings.hermes_timeout_seconds)
+            async with client.stream(
+                "POST", self.settings.hermes_chat_url, headers=headers, json=payload
+            ) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    data = line[6:].strip()
+                    if data == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data)
+                        delta = chunk["choices"][0].get("delta", {})
+                        content = delta.get("content", "")
+                        if content:
+                            yield content
+                    except (json.JSONDecodeError, KeyError, IndexError):
+                        continue
         except httpx.HTTPError as exc:
             self.logger.error("Hermes stream error: %s", exc)
             raise ProviderProtocolError(f"Hermes stream failed: {exc}") from exc

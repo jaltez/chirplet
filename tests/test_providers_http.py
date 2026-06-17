@@ -138,6 +138,37 @@ class TestHermesCompleteImpl:
         assert "response_format" not in request_body
 
     @pytest.mark.asyncio
+    async def test_underlying_httpx_client_is_reused_across_turns(self):
+        """Both Hermes paths use BaseProvider.get_client, so the same
+        httpx.AsyncClient is reused across turns. Closing it once
+        and then making another turn must reopen the client rather
+        than reuse the closed one. Proves the cache is in effect."""
+        provider = HermesProvider(_make_settings(), _logger())
+        with respx.mock(base_url="http://hermes.test") as mock:
+            # Register both routes up front so the context manager
+            # sees them all as called.
+            mock.post("/v1/chat/completions").respond(200, json=_simple_body("a"))
+            mock.post("/v1/chat/completions").respond(200, json=_simple_body("b"))
+            mock.post("/v1/chat/completions").respond(200, json=_simple_body("c"))
+
+            await provider.complete_turn("hi", "en-GB", [])
+            first_client = provider._client
+            assert first_client is not None and not first_client.is_closed
+
+            await provider.complete_turn("hi", "en-GB", [])
+            second_client = provider._client
+            assert second_client is first_client, "expected cached client, got a new one"
+
+            await provider.aclose()
+            assert first_client.is_closed
+
+            # A subsequent turn must reopen rather than reuse the closed client.
+            await provider.complete_turn("hi", "en-GB", [])
+            assert provider._client is not None
+            assert not provider._client.is_closed
+            await provider.aclose()
+
+    @pytest.mark.asyncio
     async def test_sends_authorization_header_when_api_key_set(self):
         s = _make_settings(hermes_api_key="sk-test-123")
         provider = HermesProvider(s, _logger())
