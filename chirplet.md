@@ -6,7 +6,22 @@
 
 > **Author:** Javier Altez
 > **Date:** 2026-05-14
-> **Version:** 1.0
+> **Version:** 1.0 (revised 2026-06-17 to mark phases against the
+> current implementation; see `docs/phase-1-spec.md` for the
+> shipped MVP and `docs/roadmap.md` for the live plan)
+
+## Current state
+
+| Phase | Scope                                  | Status      | Doc                          |
+| ----- | -------------------------------------- | ----------- | ---------------------------- |
+| 1     | Functional prototype (desktop browser) | **shipped** | `docs/phase-1-spec.md`       |
+| 2     | Visual interface (avatar states)       | partial     | this file, §"Phase 2"        |
+| 3     | Optimisation (WebSockets, wake word)   | deferred    | this file, §"Phase 3"        |
+| 4     | Polish and hardware (Raspberry Pi)      | deferred    | this file, §"Phase 4"        |
+
+Everything in the body of this document below is the long-term
+design. For what is in the repo *today*, read `phase-1-spec.md`
+first, then come back here for context.
 
 ---
 
@@ -283,28 +298,44 @@ Hermes Agent includes protection mechanisms you should take advantage of:
 
 ### Phase 1 - Functional Prototype
 
+> **Status: shipped.** See `docs/phase-1-spec.md` for the as-built
+> contract.
+
 - [x] Define architecture and stack
-- [ ] Configure Hermes Agent on a VPS with a fast model
-- [ ] Create a basic Python client with local STT
-- [ ] Implement HTTP communication with the agent
-- [ ] Integrate local TTS
-- [ ] Test latency and conversational smoothness
+- [x] Backend: HTTP + SSE turn endpoint, OpenAI-compatible
+- [x] Browser client: Web Speech API for STT/TTS, push-to-talk
+- [x] Avatar: pure-CSS state machine driven by `data-*` attributes
+- [x] Spanish + English locales
+- [x] SQLite session history (drift — see `phase-1-spec.md` §"Drift")
+- [x] Latency smoke test in CI via the Playwright e2e test
 
 ### Phase 2 - Visual Interface
 
+> **Status: partial.** The avatar exists in the browser and the
+> LLM-driven expressions are wired end-to-end. The Raspberry Pi
+> pixel-grid + Pygame renderer is not started.
+
+- [x] Avatar state machine (`idle | listening | thinking |
+  speaking | error | disconnected`)
+- [x] Avatar mood + mouth cues (driven by LLM JSON)
+- [x] JSON parsing for expression commands
+- [x] Synchronise audio with facial movement (browser-side;
+  via `mouth=open` on the speaking state)
 - [ ] Design the pixel grid and expression presets
-- [ ] Build rendering with Pygame
-- [ ] Implement JSON parsing for animation commands
-- [ ] Synchronize audio with facial movement
+- [ ] Build rendering with Pygame (Raspberry Pi)
 
 ### Phase 3 - Optimization
 
-- [ ] Migrate from HTTP to WebSockets
+> **Status: deferred.**
+
+- [ ] Migrate from HTTP/SSE to WebSockets
 - [ ] Add wake word detection with `pvporcupine` or similar
 - [ ] Configure a secure tunnel (Cloudflare/Tailscale)
 - [ ] Tune latency and robustness
 
 ### Phase 4 - Polish and Hardware
+
+> **Status: deferred.**
 
 - [ ] Move from the virtual display to a physical screen (HDMI/SPI)
 - [ ] Integrate optional LEDs or a physical matrix

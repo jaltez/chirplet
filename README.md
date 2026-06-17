@@ -27,17 +27,43 @@ Chrome or Edge are the safest browsers for the first build because SpeechRecogni
 
 ## Current Scope
 
-The current implementation is an MVP skeleton:
-- FastAPI backend with Hermes chat-completions integration
-- in-memory session history
-- avatar-first single page UI
-- browser speech recognition and speech synthesis for the first local demo
-- minimal debug panel hidden behind a disclosure block
+The current implementation is a working MVP:
+- FastAPI backend with OpenAI-compatible chat-completions integration
+  (Hermes by default; Ollama is also a first-class provider for
+  local dev)
+- SQLite session history (in `data/chirplet.db` by default)
+- avatar-first single-page UI driven by `data-*` state attributes
+- browser speech recognition and speech synthesis for the first
+  local demo, with a TTS voice picker in the debug panel
+- minimal debug panel hidden behind a disclosure block; surfaces
+  manual text input, voice selection, and a read-only session
+  transcript
+- request-id correlation (`X-Request-ID`) across frontend and
+  backend logs
+- dark mode via `prefers-color-scheme`
 
-Hermes remains the required runtime for conversation. If Hermes is not configured, the UI stays available but returns a safe fallback response.
+If the configured LLM provider is not reachable, the UI stays
+available but returns a locale-aware fallback response.
+
+## Testing and CI
+
+- `make test` — runs the test suite.
+- `make test-cov` — runs with coverage; enforces a 100% floor
+  via `--cov-fail-under=100`.
+- `make schema` — regenerates the JSON-Schema from Pydantic.
+- A GitHub Actions workflow (`.github/workflows/ci.yml`) runs on
+  every push to `main` and every PR: installs deps, installs
+  Playwright Chromium, verifies the JSON-Schema is in sync, then
+  runs `make test-cov` (which includes the SSE + interrupt
+  end-to-end test).
 
 ## Docs
 
-- `docs/phase-1-spec.md`
-- `docs/setup-local.md`
-- `docs/hermes-spike.md`
+- `docs/phase-1-spec.md` — the as-built Phase 1 contract
+  (endpoints, LLM JSON schema, frontend rules, drift since v1)
+- `chirplet.md` — the long-term design (Phases 1-4, Raspberry
+  Pi, WebSockets, wake word)
+- `docs/roadmap.md` — pointer between the two
+- `docs/setup-local.md` — local run instructions
+- `docs/hermes-spike.md` — notes on treating Hermes as
+  production-ready
