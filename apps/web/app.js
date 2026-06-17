@@ -464,7 +464,25 @@ voiceSelect.addEventListener("change", () => {
     localStorage.removeItem(VOICE_STORAGE_KEY)
     logDebug("Voice", "browser default")
   }
+  applyVoiceTheme()
 })
+
+function applyVoiceTheme() {
+  // Surface the chosen voice on the <body> as a data attribute so
+  // CSS can branch the avatar's appearance on it. We use a short
+  // hash of the voice URI so the value is always a safe CSS
+  // identifier; the actual voice is recoverable from localStorage.
+  const value = voiceSelect.value
+  if (value) {
+    let hash = 0
+    for (let i = 0; i < value.length; i++) {
+      hash = (hash * 31 + value.charCodeAt(i)) & 0xffff
+    }
+    document.body.dataset.voice = `v${hash.toString(16)}`
+  } else {
+    delete document.body.dataset.voice
+  }
+}
 
 async function loadSessions() {
   try {
@@ -581,6 +599,7 @@ async function boot() {
       action: "idle",
     })
     populateVoiceList()
+    applyVoiceTheme()
     loadSessions()
   } catch (error) {
     logDebug("Boot", error.message)

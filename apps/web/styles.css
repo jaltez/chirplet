@@ -18,6 +18,7 @@
   --accent-error: #bd4b35;
   --accent-disconnected: #6f7378;
   --shadow: 0 24px 80px rgba(58, 40, 17, 0.18);
+  --voice-accent: #6a4ec0;
   --talk-button-text: #fefcf8;
   --debug-input-bg: rgba(255, 255, 255, 0.82);
   --debug-log-bg: rgba(29, 42, 42, 0.06);
@@ -162,6 +163,13 @@ body[data-state="listening"] .signal-ring {
   transform: scale(1.04);
   box-shadow: 0 0 40px rgba(29, 143, 130, 0.25);
   animation: listening-glow 0.8s ease-in-out infinite alternate;
+}
+
+/* When a TTS voice is selected, tint the idle ring with the
+   voice accent. Stays subtle (low opacity, no animation) so
+   the listening / speaking / thinking states still read clearly. */
+body[data-voice][data-state="idle"] .signal-ring {
+  box-shadow: 0 0 18px color-mix(in srgb, var(--voice-accent) 35%, transparent);
 }
 
 body[data-state="thinking"] .signal-ring {
@@ -605,14 +613,3 @@ body[data-mouth="round"] .mouth {
     min-width: 8rem;
     font-size: 0.95rem;
   }
-}
-1.2rem;
-    min-width: 8rem;
-    font-size: 0.95rem;
-  }
-}
-
-}
- 0.95rem;
-  }
-}

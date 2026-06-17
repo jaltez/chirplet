@@ -266,3 +266,51 @@ class TestUrlDebugPanel:
         page.goto(f"{base_url}/#debug")
         assert page.evaluate("document.querySelector('.debug-panel').open")
         page.close()
+
+
+class TestVoiceTheme:
+    def test_no_data_voice_attribute_when_no_voice_selected(self, app_server):
+        base_url, browser = app_server
+        page = browser.new_page()
+        _stub_browser_apis(page)
+        page.goto(base_url)
+        # With no saved voice, body has no data-voice attribute.
+        assert page.evaluate("!document.body.dataset.voice")
+        page.close()
+
+    def test_selecting_voice_sets_data_voice_attribute(self, app_server):
+        base_url, browser = app_server
+        page = browser.new_page()
+        _stub_browser_apis(page)
+        # Open debug panel via URL flag so the voice select is in view.
+        page.goto(f"{base_url}/?debug=1")
+
+        # Stub populateVoiceList to expose two voices synchronously
+        # (real Chromium headless may not provide any).
+        page.evaluate(
+            """
+            const sel = document.querySelector('#voice-select');
+            sel.innerHTML = '';
+            for (const v of [
+              {uri: 'urn:voice:one', name: 'One', lang: 'en-GB'},
+              {uri: 'urn:voice:two', name: 'Two', lang: 'es-ES'},
+            ]) {
+              const opt = document.createElement('option');
+              opt.value = v.uri;
+              opt.textContent = v.name;
+              sel.appendChild(opt);
+            }
+            sel.disabled = false;
+            """
+        )
+        # Select the first voice. The change handler should call
+        # applyVoiceTheme and set body[data-voice].
+        page.evaluate("document.querySelector('#voice-select').value = 'urn:voice:one'")
+        page.locator("#voice-select").dispatch_event("change")
+
+        voice_attr = page.evaluate("document.body.dataset.voice || ''")
+        assert voice_attr.startswith("v"), (
+            f"expected data-voice starting with 'v', got {voice_attr!r}"
+        )
+        assert voice_attr != "", "expected non-empty data-voice after selecting a voice"
+        page.close()
