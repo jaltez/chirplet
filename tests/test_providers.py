@@ -185,6 +185,121 @@ class TestBaseProvider:
         assert len(done_events) == 1
         assert done_events[0]["full_text"] == "Hello there"
 
+    @pytest.mark.asyncio
+    async def test_stream_turn_post_loop_cancel_returns_before_done(self):
+        """The post-loop should_cancel check suppresses the done event
+        if the client disconnects after the last chunk arrived but
+        before parsing. The mid-loop check is exercised separately in
+        test_stream_turn_stops_when_cancelled."""
+
+        class _Probe(BaseProvider):
+            @property
+            def provider_name(self) -> str:
+                return "probe"
+
+            @property
+            def configured(self) -> bool:
+                return True
+
+            async def _complete_impl(self, transcript, locale, history):
+                return AssistantPayload(text="unused")
+
+            async def _stream_impl(self, transcript, locale, history):
+                yield (
+                    '{"text":"Hello","expression":{"state":"speaking",'
+                    '"mood":"friendly","mouth":"smile"},"action":"idle",'
+                    '"voice_locale":""}'
+                )
+
+        provider = _Probe(_make_settings(), _logger())
+        calls = {"n": 0}
+
+        async def cancel_after_parse() -> bool:
+            calls["n"] += 1
+            # First call is the mid-loop check (returns False), second
+            # call is the post-loop check (returns True).
+            return calls["n"] > 1
+
+        events = [
+            event
+            async for event in provider.stream_turn(
+                "hi", "en-GB", [], should_cancel=cancel_after_parse
+            )
+        ]
+
+        # Only the token event fires; done is suppressed by the
+        # post-loop cancel.
+        assert [e["type"] for e in events] == ["token"]
+
+    @pytest.mark.asyncio
+    async def test_stream_turn_backfills_voice_locale_when_empty(self):
+        """When the LLM emits a complete JSON object with empty
+        voice_locale, the provider backfills the request locale."""
+
+        class _Probe(BaseProvider):
+            @property
+            def provider_name(self) -> str:
+                return "probe"
+
+            @property
+            def configured(self) -> bool:
+                return True
+
+            async def _complete_impl(self, transcript, locale, history):
+                return AssistantPayload(text="unused")
+
+            async def _stream_impl(self, transcript, locale, history):
+                yield (
+                    '{"text":"Hello","expression":{"state":"speaking",'
+                    '"mood":"friendly","mouth":"smile"},"action":"idle",'
+                    '"voice_locale":""}'
+                )
+
+        provider = _Probe(_make_settings(), _logger())
+        events = [
+            event
+            async for event in provider.stream_turn("hi", "en-GB", [])
+        ]
+        done = next(e for e in events if e["type"] == "done")
+        assert done["voice_locale"] == "en-GB"
+
+    @pytest.mark.asyncio
+    async def test_stream_turn_emits_final_delta_after_parse(self):
+        """The final-delta bridge in BaseProvider.stream_turn is
+        defensive: it fires only if the partial-JSON decoder's
+        preview undercounts the parsed text. The clean protocol we
+        use (single full JSON object streamed in chunks) never hits
+        that branch in practice. We document the gap here as a
+        smoke test for the surrounding code path; line 94 stays
+        pragma-marked as the unreachable-in-clean-input branch."""
+
+        class _Probe(BaseProvider):
+            @property
+            def provider_name(self) -> str:
+                return "probe"
+
+            @property
+            def configured(self) -> bool:
+                return True
+
+            async def _complete_impl(self, transcript, locale, history):
+                return AssistantPayload(text="unused")
+
+            async def _stream_impl(self, transcript, locale, history):
+                yield (
+                    '{"text":"Hello","expression":{"state":"speaking",'
+                    '"mood":"friendly","mouth":"smile"},"action":"idle",'
+                    '"voice_locale":"en-GB"}'
+                )
+
+        provider = _Probe(_make_settings(), _logger())
+        events = [
+            event
+            async for event in provider.stream_turn("hi", "en-GB", [])
+        ]
+        done = next(e for e in events if e["type"] == "done")
+        assert done["full_text"] == "Hello"
+
 
 class TestHermesProvider:
     def test_provider_name(self):
@@ -228,6 +343,13 @@ class TestOllamaProvider:
         p = OllamaProvider(_make_settings(ollama_model=""), _logger())
         with pytest.raises(ProviderConfigurationError, match="ollama is not configured"):
             await p.complete_turn("hello", "en-GB", [])
+
+    @pytest.mark.asyncio
+    async def test_stream_turn_not_configured(self):
+        p = OllamaProvider(_make_settings(ollama_model=""), _logger())
+        with pytest.raises(ProviderConfigurationError, match="ollama is not configured"):
+            async for _ in p.stream_turn("hello", "en-GB", []):
+                pass
 
     @pytest.mark.asyncio
     async def test_locale_backfill(self, monkeypatch):

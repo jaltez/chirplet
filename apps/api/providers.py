@@ -38,7 +38,7 @@ class BaseProvider(ABC):
         return self._client
 
     async def aclose(self) -> None:
-        if self._client is not None and not self._client.is_closed:  # pragma: no cover
+        if self._client is not None and not self._client.is_closed:
             await self._client.aclose()
         self._client = None
 
@@ -67,7 +67,7 @@ class BaseProvider(ABC):
         history: list[ChatTurn],
         should_cancel: Callable[[], Awaitable[bool]] | None = None,
     ) -> AsyncGenerator[dict, None]:
-        if not self.configured:  # pragma: no cover
+        if not self.configured:
             raise ProviderConfigurationError(f"{self.provider_name} is not configured")
         buffer = ""
         streamed_text = ""
@@ -82,11 +82,11 @@ class BaseProvider(ABC):
                 if delta:
                     streamed_text = preview
                     yield {"type": "token", "text": delta}
-        if should_cancel is not None and await should_cancel():  # pragma: no cover
+        if should_cancel is not None and await should_cancel():
             self.logger.info("%s stream cancelled by client", self.provider_name)
             return
         assistant = self._parse_content(buffer)
-        if not assistant.voice_locale:  # pragma: no cover
+        if not assistant.voice_locale:
             assistant.voice_locale = locale
         if assistant.text.startswith(streamed_text):
             delta = assistant.text[len(streamed_text) :]
