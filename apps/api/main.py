@@ -131,6 +131,16 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _sse_event(payload: dict) -> str:
+    """Format a single Server-Sent Event frame.
+
+    The trailing blank line is required by the SSE spec to
+    terminate a frame; without it, the client keeps reading
+    the previous event.
+    """
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
 _FALLBACK_TEXT = {
     "en": {
         AvatarState.DISCONNECTED: "I can't reach the assistant right now. Please check your configuration.",
@@ -290,10 +300,10 @@ async def create_turn_stream(
                 should_cancel=http_request.is_disconnected,
             ):
                 if event["type"] == "token":
-                    yield f"data: {json.dumps({'type': 'token', 'text': event['text']})}\n\n"
+                    yield _sse_event({"type": "token", "text": event["text"]})
                 elif event["type"] == "done":
                     await db.save_turn(session_id, turn_request.transcript, event["full_text"])
-                    done_data = json.dumps(
+                    yield _sse_event(
                         {
                             "type": "done",
                             "session_id": session_id,
@@ -303,13 +313,26 @@ async def create_turn_stream(
                             "action": event["action"],
                         }
                     )
-                    yield f"data: {done_data}\n\n"
                     logger.info("Stream turn finished session=%s", session_id[:8])
         except ProviderConfigurationError as exc:
             fb = _fallback_response(turn_request.locale, AvatarState.DISCONNECTED)
-            yield f"data: {json.dumps({'type': 'error', 'text': fb.text, 'session_id': session_id, 'issue': str(exc)})}\n\n"
+            yield _sse_event(
+                {
+                    "type": "error",
+                    "text": fb.text,
+                    "session_id": session_id,
+                    "issue": str(exc),
+                }
+            )
         except ProviderProtocolError as exc:
             fb = _fallback_response(turn_request.locale, AvatarState.ERROR)
-            yield f"data: {json.dumps({'type': 'error', 'text': fb.text, 'session_id': session_id, 'issue': str(exc)})}\n\n"
+            yield _sse_event(
+                {
+                    "type": "error",
+                    "text": fb.text,
+                    "session_id": session_id,
+                    "issue": str(exc),
+                }
+            )
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
