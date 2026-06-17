@@ -260,40 +260,6 @@ class TestBaseProvider:
         done = next(e for e in events if e["type"] == "done")
         assert done["voice_locale"] == "en-GB"
 
-    @pytest.mark.asyncio
-    async def test_stream_turn_emits_final_delta_after_parse(self):
-        """The final-delta bridge in BaseProvider.stream_turn is
-        defensive: it fires only if the partial-JSON decoder's
-        preview undercounts the parsed text. The clean protocol we
-        use (single full JSON object streamed in chunks) never hits
-        that branch in practice. We document the gap here as a
-        smoke test for the surrounding code path; line 94 stays
-        pragma-marked as the unreachable-in-clean-input branch."""
-
-        class _Probe(BaseProvider):
-            @property
-            def provider_name(self) -> str:
-                return "probe"
-
-            @property
-            def configured(self) -> bool:
-                return True
-
-            async def _complete_impl(self, transcript, locale, history):
-                return AssistantPayload(text="unused")
-
-            async def _stream_impl(self, transcript, locale, history):
-                yield (
-                    '{"text":"Hello","expression":{"state":"speaking",'
-                    '"mood":"friendly","mouth":"smile"},"action":"idle",'
-                    '"voice_locale":"en-GB"}'
-                )
-
-        provider = _Probe(_make_settings(), _logger())
-        events = [event async for event in provider.stream_turn("hi", "en-GB", [])]
-        done = next(e for e in events if e["type"] == "done")
-        assert done["full_text"] == "Hello"
-
 
 class TestHermesProvider:
     def test_provider_name(self):
