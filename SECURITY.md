@@ -26,11 +26,11 @@ out the trust model and the known gaps.
 - There is **no transport security**. The app speaks plain HTTP
   on the local port; do not put it behind a public domain name
   without TLS termination (a reverse proxy).
-- The browser CORS configuration is `allow_origins=["*"]` with
-  `allow_credentials=True`. Browsers reject credentialed
-  cross-origin requests to `*` per the Fetch spec, so this is
-  effectively a non-issue today, but it's misleading and should
-  be tightened if/when a real frontend origin is added.
+- The browser CORS configuration uses `allow_origins=["*"]` with
+  `allow_credentials=False` (credentials are auto-disabled when
+  the wildcard origin is used). If you narrow `CORS_ORIGINS` to
+  specific origins, `allow_credentials` is automatically enabled,
+  so be sure your origin list is correct.
 
 ## Trust model when bound to a non-loopback interface
 
@@ -40,12 +40,16 @@ caveats apply to **anyone on the network** that can reach the
 host:port. Before doing that, you should add at least:
 
 1. A reverse proxy with TLS (Caddy / nginx / Cloudflare Tunnel).
-2. An authentication layer (a single-user bearer token checked
-   by a dependency, or HTTP basic auth in front).
-3. Rate limiting (e.g. `slowapi` middleware).
+2. An authentication layer — **now built in**: set `AUTH_TOKEN`
+   in `.env` to require a `Authorization: Bearer <token>` header
+   on all `/api/*` endpoints and the `/ws` WebSocket. The
+   health endpoint (`/api/health`) remains open so the frontend
+   can boot.
+3. Rate limiting — **now built in**: set `RATE_LIMIT_PER_MINUTE`
+   to a positive integer to enforce a sliding-window per-IP cap.
+   Uses an in-memory counter (no external dependency).
 
-These are out of scope for the MVP. None of them are implemented
-today.
+Both features are disabled by default for local-first use.
 
 ## Data at rest
 

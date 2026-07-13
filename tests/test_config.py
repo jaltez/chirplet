@@ -60,6 +60,7 @@ class TestSettings:
             log_level="INFO",
             llm_provider="hermes",
             llm_temperature=0.4,
+            llm_max_tokens=512,
             hermes_base_url="http://x/v1",
             hermes_api_key=None,
             hermes_model="gpt",
@@ -75,6 +76,10 @@ class TestSettings:
             database_path=Path("db"),
             cors_origins="*",
             system_prompt="you are helpful",
+            chirplet_persona="",
+            enable_time_context=True,
+            auth_token=None,
+            rate_limit_per_minute=0,
         )
         assert s.hermes_configured is True
         assert s.hermes_chat_url == "http://x/v1/chat/completions"
@@ -88,6 +93,7 @@ class TestSettings:
             log_level="INFO",
             llm_provider="hermes",
             llm_temperature=0.4,
+            llm_max_tokens=512,
             hermes_base_url="",
             hermes_api_key=None,
             hermes_model="",
@@ -103,6 +109,10 @@ class TestSettings:
             database_path=Path("db"),
             cors_origins="*",
             system_prompt="you are helpful",
+            chirplet_persona="",
+            enable_time_context=True,
+            auth_token=None,
+            rate_limit_per_minute=0,
         )
         assert s.hermes_configured is False
 
@@ -115,6 +125,7 @@ class TestSettings:
             log_level="INFO",
             llm_provider="hermes",
             llm_temperature=0.4,
+            llm_max_tokens=512,
             hermes_base_url="",
             hermes_api_key=None,
             hermes_model="",
@@ -130,6 +141,10 @@ class TestSettings:
             database_path=Path("db"),
             cors_origins="*",
             system_prompt="you are helpful",
+            chirplet_persona="",
+            enable_time_context=True,
+            auth_token=None,
+            rate_limit_per_minute=0,
         )
         with pytest.raises(RuntimeError, match="Hermes endpoint is not configured"):
             _ = s.hermes_chat_url
@@ -143,6 +158,7 @@ class TestSettings:
             log_level="INFO",
             llm_provider="ollama",
             llm_temperature=0.4,
+            llm_max_tokens=512,
             hermes_base_url="",
             hermes_api_key=None,
             hermes_model="",
@@ -158,6 +174,10 @@ class TestSettings:
             database_path=Path("db"),
             cors_origins="*",
             system_prompt="you are helpful",
+            chirplet_persona="",
+            enable_time_context=True,
+            auth_token=None,
+            rate_limit_per_minute=0,
         )
         assert s.provider_configured is True
 
@@ -170,6 +190,7 @@ class TestSettings:
             log_level="INFO",
             llm_provider="hermes",
             llm_temperature=0.4,
+            llm_max_tokens=512,
             hermes_base_url="",
             hermes_api_key=None,
             hermes_model="",
@@ -185,5 +206,9 @@ class TestSettings:
             database_path=Path("db"),
             cors_origins="*",
             system_prompt="you are helpful",
+            chirplet_persona="",
+            enable_time_context=True,
+            auth_token=None,
+            rate_limit_per_minute=0,
         )
         assert s.provider_configured is False

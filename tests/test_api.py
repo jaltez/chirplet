@@ -125,6 +125,17 @@ class TestTurnEndpoint:
         assert data["meta"]["fallback_used"] is False
 
     @pytest.mark.asyncio
+    async def test_turn_returns_response_even_when_db_save_fails(self, client, mock_db):
+        mock_db.save_turn = AsyncMock(side_effect=RuntimeError("DB locked"))
+
+        res = await client.post(
+            "/api/turn",
+            json={"session_id": "db-fail", "transcript": "hello"},
+        )
+        assert res.status_code == 200
+        assert "Echo: hello" in res.json()["assistant"]["text"]
+
+    @pytest.mark.asyncio
     async def test_turn_creates_session_if_none(self, client):
         res = await client.post(
             "/api/turn",
@@ -340,6 +351,42 @@ class TestStreamEndpoint:
         assert call_args[0][0] == "save-test"
         assert call_args[0][1] == "hello"
         assert "Echo: hello" in call_args[0][2]
+
+    @pytest.mark.asyncio
+    async def test_stream_still_emits_done_when_db_save_fails(self, client, mock_db):
+        mock_db.save_turn = AsyncMock(side_effect=RuntimeError("DB locked"))
+
+        res = await client.post(
+            "/api/turn/stream",
+            json={"session_id": "db-fail-stream", "transcript": "hello"},
+        )
+        events = []
+        for line in res.text.split("\n"):
+            if line.startswith("data: "):
+                events.append(json.loads(line[6:]))
+        done_events = [e for e in events if e["type"] == "done"]
+        assert len(done_events) == 1
+        assert "Echo: hello" in done_events[0]["text"]
+
+    @pytest.mark.asyncio
+    async def test_stream_emits_error_on_unexpected_exception(self, client, mock_provider):
+        async def boom(*args, **kwargs):
+            raise RuntimeError("unexpected")
+            yield
+
+        mock_provider.stream_turn = boom
+
+        res = await client.post(
+            "/api/turn/stream",
+            json={"session_id": "crash", "transcript": "hello"},
+        )
+        events = []
+        for line in res.text.split("\n"):
+            if line.startswith("data: "):
+                events.append(json.loads(line[6:]))
+        error_events = [e for e in events if e["type"] == "error"]
+        assert len(error_events) == 1
+        assert error_events[0]["session_id"] == "crash"
 
 
 class TestIndexEndpoint:

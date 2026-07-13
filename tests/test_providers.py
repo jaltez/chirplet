@@ -29,6 +29,7 @@ def _make_settings(**overrides) -> Settings:
         log_level="INFO",
         llm_provider="hermes",
         llm_temperature=0.4,
+        llm_max_tokens=512,
         hermes_base_url="http://x/v1",
         hermes_api_key=None,
         hermes_model="gpt",
@@ -44,6 +45,10 @@ def _make_settings(**overrides) -> Settings:
         database_path=Path("db"),
         cors_origins="*",
         system_prompt='Respond with JSON: {"text":"..."}',
+        chirplet_persona="",
+        enable_time_context=False,
+        auth_token=None,
+        rate_limit_per_minute=0,
     )
     defaults.update(overrides)
     return Settings(**defaults)

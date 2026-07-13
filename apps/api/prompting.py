@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 DEFAULT_SYSTEM_PROMPT = """
 You are Chirplet, a personal voice assistant for a child-friendly interface.
 
@@ -23,3 +25,36 @@ Rules:
 - Do not include comments.
 - Prefer warm and simple wording.
 """.strip()
+
+
+def build_system_prompt(
+    *,
+    base_prompt: str,
+    persona: str = "",
+    include_time_context: bool = True,
+    extra_context: str = "",
+) -> str:
+    """Build a complete system prompt with optional dynamic context.
+
+    Sections are appended to the base prompt only when their content
+    is non-empty, so callers that pass no persona or context get the
+    exact base prompt back (plus optional time info).
+    """
+    sections: list[str] = [base_prompt.strip()]
+
+    persona = persona.strip()
+    if persona:
+        sections.append(f"Persona: {persona}")
+
+    if include_time_context:
+        now = datetime.now(timezone.utc)
+        sections.append(
+            f"Current date: {now.strftime('%A, %B %d, %Y')}. "
+            f"Current time: {now.strftime('%H:%M')} UTC."
+        )
+
+    extra_context = extra_context.strip()
+    if extra_context:
+        sections.append(extra_context)
+
+    return "\n\n".join(sections)

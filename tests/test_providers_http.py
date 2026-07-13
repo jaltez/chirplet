@@ -37,6 +37,7 @@ def _make_settings(**overrides) -> Settings:
         log_level="INFO",
         llm_provider="hermes",
         llm_temperature=0.4,
+        llm_max_tokens=512,
         hermes_base_url="http://hermes.test/v1",
         hermes_api_key=None,
         hermes_model="gpt-x",
@@ -52,6 +53,10 @@ def _make_settings(**overrides) -> Settings:
         database_path=Path("db"),
         cors_origins="*",
         system_prompt='Respond with JSON: {"text":"..."}',
+        chirplet_persona="",
+        enable_time_context=False,
+        auth_token=None,
+        rate_limit_per_minute=0,
     )
     defaults.update(overrides)
     return Settings(**defaults)
@@ -59,6 +64,11 @@ def _make_settings(**overrides) -> Settings:
 
 def _logger():
     return logging.getLogger("test.http")
+
+
+@pytest.fixture(autouse=True)
+def _zero_retry_delay(monkeypatch):
+    monkeypatch.setattr("apps.api.providers._BASE_DELAY", 0.0)
 
 
 def _simple_body(text: str = "Hello there") -> dict[str, Any]:
@@ -131,6 +141,7 @@ class TestHermesCompleteImpl:
         request_body = json.loads(route.calls.last.request.content)
         assert request_body["model"] == "gpt-x"
         assert request_body["temperature"] == 0.4
+        assert request_body["max_tokens"] == 512
         # History disabled -> only system + user.
         assert len(request_body["messages"]) == 2
         assert request_body["messages"][0]["role"] == "system"
@@ -417,6 +428,28 @@ class TestHermesStreamImpl:
         sent = route.calls.last.request
         assert sent.headers["authorization"] == "Bearer sk-stream-test"
 
+    @pytest.mark.asyncio
+    async def test_stream_includes_response_format_when_configured(self):
+        s = _make_settings(hermes_response_format="json_object")
+        provider = HermesProvider(s, _logger())
+        full_json = json.dumps(
+            {
+                "text": "hi",
+                "expression": {"state": "speaking", "mood": "friendly", "mouth": "smile"},
+                "action": "idle",
+                "voice_locale": "en-GB",
+            }
+        )
+        sse_body = _sse_line({"choices": [{"delta": {"content": full_json}}]}) + _sse_done()
+        with respx.mock(base_url="http://hermes.test") as mock:
+            route = mock.post("/v1/chat/completions").respond(
+                200, content=sse_body, headers={"content-type": "text/event-stream"}
+            )
+            async for _ in provider.stream_turn("hello", "en-GB", []):
+                pass
+        request_body = json.loads(route.calls.last.request.content)
+        assert request_body["response_format"] == {"type": "json_object"}
+
 
 # ---------------------------------------------------------------------------
 # OllamaProvider: _complete_impl
@@ -451,6 +484,7 @@ class TestOllamaCompleteImpl:
         assert sent["model"] == "llama3.2"
         assert sent["format"] == "json"
         assert sent["options"]["temperature"] == 0.4
+        assert sent["options"]["num_predict"] == 512
         assert result.text == "hola"
         assert result.voice_locale == "es-ES"
 
@@ -608,3 +642,114 @@ class TestOllamaStreamImpl:
             with pytest.raises(ProviderProtocolError, match="Ollama stream failed"):
                 async for _ in provider.stream_turn("hello", "es-ES", []):
                     pass
+
+
+# ---------------------------------------------------------------------------
+# Retry behaviour
+# ---------------------------------------------------------------------------
+
+
+class TestRetryHermesComplete:
+    @pytest.mark.asyncio
+    async def test_retries_on_5xx_then_succeeds(self):
+        provider = HermesProvider(_make_settings(), _logger())
+        with respx.mock(base_url="http://hermes.test") as mock:
+            mock.post("/v1/chat/completions").mock(
+                side_effect=[
+                    httpx.Response(503, text="down"),
+                    httpx.Response(200, json=_simple_body("recovered")),
+                ]
+            )
+            result = await provider.complete_turn("hello", "en-GB", [])
+        assert result.text == "recovered"
+
+    @pytest.mark.asyncio
+    async def test_retries_on_connect_error_then_succeeds(self):
+        provider = HermesProvider(_make_settings(), _logger())
+        with respx.mock(base_url="http://hermes.test") as mock:
+            mock.post("/v1/chat/completions").mock(
+                side_effect=[
+                    httpx.ConnectError("transient"),
+                    httpx.Response(200, json=_simple_body("ok")),
+                ]
+            )
+            result = await provider.complete_turn("hello", "en-GB", [])
+        assert result.text == "ok"
+
+    @pytest.mark.asyncio
+    async def test_no_retry_on_4xx(self):
+        provider = HermesProvider(_make_settings(), _logger())
+        with respx.mock(base_url="http://hermes.test") as mock:
+            route = mock.post("/v1/chat/completions").respond(401, text="bad key")
+            with pytest.raises(ProviderProtocolError, match="Hermes request failed"):
+                await provider.complete_turn("hello", "en-GB", [])
+        assert len(route.calls) == 1
+
+
+class TestRetryHermesStream:
+    @pytest.mark.asyncio
+    async def test_retries_on_5xx_then_succeeds(self):
+        provider = HermesProvider(_make_settings(), _logger())
+        full_json = json.dumps(
+            {
+                "text": "recovered",
+                "expression": {"state": "speaking", "mood": "friendly", "mouth": "smile"},
+                "action": "idle",
+                "voice_locale": "en-GB",
+            }
+        )
+        sse_body = _sse_line({"choices": [{"delta": {"content": full_json}}]}) + _sse_done()
+        with respx.mock(base_url="http://hermes.test") as mock:
+            mock.post("/v1/chat/completions").mock(
+                side_effect=[
+                    httpx.Response(503, text="down"),
+                    httpx.Response(
+                        200, content=sse_body, headers={"content-type": "text/event-stream"}
+                    ),
+                ]
+            )
+            events = [e async for e in provider.stream_turn("hello", "en-GB", [])]
+        done_events = [e for e in events if e["type"] == "done"]
+        assert len(done_events) == 1
+        assert done_events[0]["full_text"] == "recovered"
+
+
+class TestRetryOllamaComplete:
+    @pytest.mark.asyncio
+    async def test_retries_on_5xx_then_succeeds(self):
+        provider = OllamaProvider(_make_settings(), _logger())
+        with respx.mock(base_url="http://ollama.test:11434") as mock:
+            mock.post("/api/chat").mock(
+                side_effect=[
+                    httpx.Response(500, text="down"),
+                    httpx.Response(200, json=_ollama_body("recovered")),
+                ]
+            )
+            result = await provider.complete_turn("hello", "es-ES", [])
+        assert result.text == "recovered"
+
+
+class TestRetryOllamaStream:
+    @pytest.mark.asyncio
+    async def test_retries_on_5xx_then_succeeds(self):
+        provider = OllamaProvider(_make_settings(), _logger())
+        full_json = json.dumps(
+            {
+                "text": "recovered",
+                "expression": {"state": "speaking", "mood": "friendly", "mouth": "smile"},
+                "action": "idle",
+                "voice_locale": "es-ES",
+            }
+        )
+        ndjson_body = _ollama_ndjson_line(full_json) + _ollama_ndjson_line("", done=True)
+        with respx.mock(base_url="http://ollama.test:11434") as mock:
+            mock.post("/api/chat").mock(
+                side_effect=[
+                    httpx.Response(500, text="down"),
+                    httpx.Response(200, content=ndjson_body),
+                ]
+            )
+            events = [e async for e in provider.stream_turn("hello", "es-ES", [])]
+        done_events = [e for e in events if e["type"] == "done"]
+        assert len(done_events) == 1
+        assert done_events[0]["full_text"] == "recovered"

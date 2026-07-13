@@ -1,5 +1,7 @@
+import asyncio
 import json
 import logging
+import random
 import re
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator, Awaitable, Callable
@@ -9,6 +11,10 @@ import httpx
 
 from apps.api.config import Settings
 from apps.api.contracts import AssistantPayload, ChatTurn
+from apps.api.prompting import build_system_prompt
+
+_MAX_RETRIES = 3
+_BASE_DELAY = 0.5
 
 
 class ProviderError(Exception):
@@ -36,6 +42,17 @@ class BaseProvider(ABC):
         if self._client is None or self._client.is_closed:
             self._client = httpx.AsyncClient(timeout=timeout)
         return self._client
+
+    @staticmethod
+    def _is_retryable(exc: Exception) -> bool:
+        if isinstance(exc, httpx.HTTPStatusError):
+            return exc.response.status_code >= 500
+        return isinstance(exc, (httpx.TimeoutException, httpx.ConnectError))
+
+    @staticmethod
+    def _retry_delay(attempt: int) -> float:
+        delay = _BASE_DELAY * (2**attempt)
+        return delay + random.uniform(0, delay * 0.25)
 
     async def aclose(self) -> None:
         if self._client is not None and not self._client.is_closed:
@@ -113,8 +130,13 @@ class BaseProvider(ABC):
     def _build_messages(
         self, transcript: str, locale: str, history: list[ChatTurn]
     ) -> list[dict[str, str]]:
+        system_prompt = build_system_prompt(
+            base_prompt=self.settings.system_prompt,
+            persona=self.settings.chirplet_persona,
+            include_time_context=self.settings.enable_time_context,
+        )
         messages: list[dict[str, str]] = [
-            {"role": "system", "content": self.settings.system_prompt},
+            {"role": "system", "content": system_prompt},
         ]
         if self.settings.enable_session_memory:
             for turn in history[-self.settings.session_turn_limit :]:
@@ -244,6 +266,7 @@ class HermesProvider(BaseProvider):
             "model": self.settings.hermes_model,
             "messages": messages,
             "temperature": self.settings.llm_temperature,
+            "max_tokens": self.settings.llm_max_tokens,
         }
         if self.settings.hermes_response_format == "json_object":
             payload["response_format"] = {"type": "json_object"}
@@ -257,11 +280,27 @@ class HermesProvider(BaseProvider):
         )
 
         try:
-            client = await self.get_client(self.settings.hermes_timeout_seconds)
-            response = await client.post(
-                self.settings.hermes_chat_url, headers=headers, json=payload
-            )
-            response.raise_for_status()
+            attempt = 0
+            while True:
+                try:
+                    client = await self.get_client(self.settings.hermes_timeout_seconds)
+                    response = await client.post(
+                        self.settings.hermes_chat_url, headers=headers, json=payload
+                    )
+                    response.raise_for_status()
+                    break
+                except httpx.HTTPError as exc:
+                    if attempt < _MAX_RETRIES and self._is_retryable(exc):
+                        self.logger.warning(
+                            "Hermes request failed (attempt %d/%d), retrying: %s",
+                            attempt + 1,
+                            _MAX_RETRIES,
+                            exc,
+                        )
+                        await asyncio.sleep(self._retry_delay(attempt))
+                        attempt += 1
+                        continue
+                    raise
         except httpx.HTTPError as exc:
             self.logger.error("Hermes HTTP error: %s", exc)
             raise ProviderProtocolError(f"Hermes request failed: {exc}") from exc
@@ -292,8 +331,11 @@ class HermesProvider(BaseProvider):
             "model": self.settings.hermes_model,
             "messages": messages,
             "temperature": self.settings.llm_temperature,
+            "max_tokens": self.settings.llm_max_tokens,
             "stream": True,
         }
+        if self.settings.hermes_response_format == "json_object":
+            payload["response_format"] = {"type": "json_object"}
         headers = {"Content-Type": "application/json"}
         if self.settings.hermes_api_key:
             headers["Authorization"] = f"Bearer {self.settings.hermes_api_key}"
@@ -301,25 +343,43 @@ class HermesProvider(BaseProvider):
         self.logger.debug("Hermes stream request model=%s", self.settings.hermes_model)
 
         try:
-            client = await self.get_client(self.settings.hermes_timeout_seconds)
-            async with client.stream(
-                "POST", self.settings.hermes_chat_url, headers=headers, json=payload
-            ) as response:
-                response.raise_for_status()
-                async for line in response.aiter_lines():
-                    if not line.startswith("data: "):
+            attempt = 0
+            got_response = False
+            while True:
+                try:
+                    client = await self.get_client(self.settings.hermes_timeout_seconds)
+                    async with client.stream(
+                        "POST", self.settings.hermes_chat_url, headers=headers, json=payload
+                    ) as response:
+                        response.raise_for_status()
+                        got_response = True
+                        async for line in response.aiter_lines():
+                            if not line.startswith("data: "):
+                                continue
+                            data = line[6:].strip()
+                            if data == "[DONE]":
+                                break
+                            try:
+                                chunk = json.loads(data)
+                                delta = chunk["choices"][0].get("delta", {})
+                                content = delta.get("content", "")
+                                if content:
+                                    yield content
+                            except (json.JSONDecodeError, KeyError, IndexError):
+                                continue
+                    return
+                except httpx.HTTPError as exc:
+                    if not got_response and attempt < _MAX_RETRIES and self._is_retryable(exc):
+                        self.logger.warning(
+                            "Hermes stream failed (attempt %d/%d), retrying: %s",
+                            attempt + 1,
+                            _MAX_RETRIES,
+                            exc,
+                        )
+                        await asyncio.sleep(self._retry_delay(attempt))
+                        attempt += 1
                         continue
-                    data = line[6:].strip()
-                    if data == "[DONE]":
-                        break
-                    try:
-                        chunk = json.loads(data)
-                        delta = chunk["choices"][0].get("delta", {})
-                        content = delta.get("content", "")
-                        if content:
-                            yield content
-                    except (json.JSONDecodeError, KeyError, IndexError):
-                        continue
+                    raise
         except httpx.HTTPError as exc:
             self.logger.error("Hermes stream error: %s", exc)
             raise ProviderProtocolError(f"Hermes stream failed: {exc}") from exc
@@ -342,7 +402,10 @@ class OllamaProvider(BaseProvider):
             "model": self.settings.ollama_model,
             "messages": messages,
             "stream": False,
-            "options": {"temperature": self.settings.llm_temperature},
+            "options": {
+                "temperature": self.settings.llm_temperature,
+                "num_predict": self.settings.llm_max_tokens,
+            },
             "format": "json",
         }
 
@@ -351,12 +414,28 @@ class OllamaProvider(BaseProvider):
         )
 
         try:
-            client = await self.get_client(self.settings.ollama_timeout_seconds)
-            response = await client.post(
-                f"{self.settings.ollama_base_url}/api/chat",
-                json=payload,
-            )
-            response.raise_for_status()
+            attempt = 0
+            while True:
+                try:
+                    client = await self.get_client(self.settings.ollama_timeout_seconds)
+                    response = await client.post(
+                        f"{self.settings.ollama_base_url}/api/chat",
+                        json=payload,
+                    )
+                    response.raise_for_status()
+                    break
+                except httpx.HTTPError as exc:
+                    if attempt < _MAX_RETRIES and self._is_retryable(exc):
+                        self.logger.warning(
+                            "Ollama request failed (attempt %d/%d), retrying: %s",
+                            attempt + 1,
+                            _MAX_RETRIES,
+                            exc,
+                        )
+                        await asyncio.sleep(self._retry_delay(attempt))
+                        attempt += 1
+                        continue
+                    raise
         except httpx.HTTPError as exc:
             self.logger.error("Ollama HTTP error: %s", exc)
             raise ProviderProtocolError(f"Ollama request failed: {exc}") from exc
@@ -380,30 +459,51 @@ class OllamaProvider(BaseProvider):
             "model": self.settings.ollama_model,
             "messages": messages,
             "stream": True,
-            "options": {"temperature": self.settings.llm_temperature},
+            "options": {
+                "temperature": self.settings.llm_temperature,
+                "num_predict": self.settings.llm_max_tokens,
+            },
             "format": "json",
         }
 
         self.logger.debug("Ollama stream request model=%s", self.settings.ollama_model)
 
         try:
-            client = await self.get_client(self.settings.ollama_timeout_seconds)
-            async with client.stream(
-                "POST", f"{self.settings.ollama_base_url}/api/chat", json=payload
-            ) as response:
-                response.raise_for_status()
-                async for line in response.aiter_lines():
-                    if not line.strip():
+            attempt = 0
+            got_response = False
+            while True:
+                try:
+                    client = await self.get_client(self.settings.ollama_timeout_seconds)
+                    async with client.stream(
+                        "POST", f"{self.settings.ollama_base_url}/api/chat", json=payload
+                    ) as response:
+                        response.raise_for_status()
+                        got_response = True
+                        async for line in response.aiter_lines():
+                            if not line.strip():
+                                continue
+                            try:
+                                chunk = json.loads(line)
+                                content = chunk.get("message", {}).get("content", "")
+                                if content:
+                                    yield content
+                                if chunk.get("done", False):
+                                    break
+                            except json.JSONDecodeError:
+                                continue
+                    return
+                except httpx.HTTPError as exc:
+                    if not got_response and attempt < _MAX_RETRIES and self._is_retryable(exc):
+                        self.logger.warning(
+                            "Ollama stream failed (attempt %d/%d), retrying: %s",
+                            attempt + 1,
+                            _MAX_RETRIES,
+                            exc,
+                        )
+                        await asyncio.sleep(self._retry_delay(attempt))
+                        attempt += 1
                         continue
-                    try:
-                        chunk = json.loads(line)
-                        content = chunk.get("message", {}).get("content", "")
-                        if content:
-                            yield content
-                        if chunk.get("done", False):
-                            break
-                    except json.JSONDecodeError:
-                        continue
+                    raise
         except httpx.HTTPError as exc:
             self.logger.error("Ollama stream error: %s", exc)
             raise ProviderProtocolError(f"Ollama stream failed: {exc}") from exc

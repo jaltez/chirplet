@@ -109,3 +109,30 @@ class SessionListResponse(BaseModel):
 class ChatTurn:
     user: str
     assistant: str
+
+
+class ExportTurn(BaseModel):
+    id: int
+    user: str
+    assistant: str
+    created_at: str
+
+
+class SessionExport(BaseModel):
+    session_id: str
+    created_at: str
+    last_active_at: str
+    turn_count: int
+    turns: list[ExportTurn]
+
+
+class BulkExportResponse(BaseModel):
+    exported_at: str
+    schema_version: int
+    sessions: list[SessionExport]
+
+
+class ImportResponse(BaseModel):
+    imported_sessions: int
+    imported_turns: int
+    skipped_sessions: int

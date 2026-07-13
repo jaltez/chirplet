@@ -44,6 +44,7 @@ class Settings:
     log_level: str
     llm_provider: str
     llm_temperature: float
+    llm_max_tokens: int
     hermes_base_url: str
     hermes_api_key: str | None
     hermes_model: str
@@ -59,6 +60,10 @@ class Settings:
     database_path: Path
     cors_origins: str
     system_prompt: str
+    chirplet_persona: str
+    enable_time_context: bool
+    auth_token: str | None
+    rate_limit_per_minute: int
 
     @property
     def hermes_configured(self) -> bool:
@@ -87,6 +92,7 @@ def get_settings() -> Settings:
         log_level=os.getenv("LOG_LEVEL", "INFO").strip().upper(),
         llm_provider=os.getenv("LLM_PROVIDER", "hermes").strip().lower(),
         llm_temperature=float(os.getenv("LLM_TEMPERATURE", "0.4")),
+        llm_max_tokens=max(1, int(os.getenv("LLM_MAX_TOKENS", "512"))),
         hermes_base_url=_normalize_base_url(os.getenv("HERMES_BASE_URL", "")),
         hermes_api_key=os.getenv("HERMES_API_KEY") or None,
         hermes_model=os.getenv("HERMES_MODEL", "").strip(),
@@ -104,4 +110,8 @@ def get_settings() -> Settings:
         database_path=_resolve_db_path(os.getenv("DATABASE_PATH", "data/chirplet.db")),
         cors_origins=os.getenv("CORS_ORIGINS", "*"),
         system_prompt=os.getenv("HERMES_SYSTEM_PROMPT", DEFAULT_SYSTEM_PROMPT).strip(),
+        chirplet_persona=os.getenv("CHIRPLET_PERSONA", ""),
+        enable_time_context=_read_bool("ENABLE_TIME_CONTEXT", True),
+        auth_token=os.getenv("AUTH_TOKEN") or None,
+        rate_limit_per_minute=max(0, int(os.getenv("RATE_LIMIT_PER_MINUTE", "0"))),
     )

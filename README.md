@@ -31,10 +31,23 @@ The current implementation is a working MVP:
 - FastAPI backend with OpenAI-compatible chat-completions integration
   (Hermes by default; Ollama is also a first-class provider for
   local dev)
-- SQLite session history (in `data/chirplet.db` by default)
+- SQLite session history (in `data/chirplet.db` by default) with a
+  versioned migration system for safe schema evolution
 - avatar-first single-page UI driven by `data-*` state attributes
 - browser speech recognition and speech synthesis for the first
   local demo, with a TTS voice picker in the debug panel
+- **WebSocket endpoint** (`/ws`) for bidirectional real-time
+  streaming with client-side interrupt; SSE (`/api/turn/stream`)
+  remains as an HTTP fallback
+- **dynamic system-prompt builder** with configurable persona
+  (`CHIRPLET_PERSONA`), automatic date/time injection, and
+  extensible context sections
+- **session export/import** (`GET /api/sessions/{id}/export`,
+  `GET /api/export/all`, `POST /api/import`) for backup and
+  data portability
+- **optional bearer-token auth** (`AUTH_TOKEN`) and per-IP
+  **rate limiting** (`RATE_LIMIT_PER_MINUTE`); both disabled by
+  default for zero-friction local use
 - minimal debug panel hidden behind a disclosure block; surfaces
   manual text input, voice selection, and a read-only session
   transcript
@@ -53,11 +66,8 @@ available but returns a locale-aware fallback response.
 - `make schema` — regenerates the JSON-Schema from Pydantic.
 - A GitHub Actions workflow (`.github/workflows/ci.yml`) defines
   the full CI pipeline (lint, format-check, JSON-Schema sync,
-  `make test-cov`, Docker build + smoke test). It is **disabled
-  for push and pull_request events** — both jobs are gated
-  with `if: github.event_name == 'workflow_dispatch'`. To run
-  the pipeline manually: GitHub → Actions → CI → Run workflow.
-  To re-enable on push/PR, remove the `if` lines from both jobs.
+  `make test-cov`, Docker build + smoke test). It runs on push to
+  `main` and on pull requests.
 
 ## Docs
 
